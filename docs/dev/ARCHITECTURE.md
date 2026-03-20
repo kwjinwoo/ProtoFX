@@ -60,5 +60,3 @@ Shared helper modules.
 - Shape inference utilities
 - ONNX ↔ PyTorch type mapping
 - Tensor conversion helpers
-- ONNX ↔ PyTorch 타입 매핑
-- 텐서 변환 헬퍼
