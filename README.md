@@ -84,6 +84,10 @@ def relu_handler(ctx, node):
 
 Each handler lives in `src/protofx/ops/` and is tested with a minimal ONNX fixture in `tests/ops/`.
 
+## Roadmap
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for planned milestones and feature status.
+
 ## License
 
 [Apache License 2.0](LICENSE)

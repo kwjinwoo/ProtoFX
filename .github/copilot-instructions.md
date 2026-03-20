@@ -17,6 +17,7 @@ ProtoFX converts ONNX models into PyTorch `torch.fx.GraphModule` objects. The go
 
 See [docs/dev/ARCHITECTURE.md](../docs/dev/ARCHITECTURE.md) for detailed architecture and component descriptions.
 See [docs/dev/IR.md](../docs/dev/IR.md) for IR design documentation.
+See [docs/ROADMAP.md](../docs/ROADMAP.md) for planned milestones and feature status.
 
 ## Build and Test
 
