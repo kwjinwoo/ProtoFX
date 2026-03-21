@@ -139,12 +139,22 @@ This avoids importer fragility caused by unnamed outputs, duplicate names, or ba
 
 ProtoFX does not collapse all incomplete metadata into a single generic "unknown" state.
 
+> **Implementation**: `ir.TensorType` (`src/protofx/ir/tensor_type.py`) holds `dtype: DType | None` and
+> `shape: Shape`. `Shape` (`src/protofx/ir/shape.py`) is `tuple[Dim, ...] | None`, where
+> `Dim` (`src/protofx/ir/dim.py`) is `int | str | None` — covering concrete, symbolic, and unknown dimensions
+> respectively. `DType` (`src/protofx/ir/dtype.py`) is a backend-neutral enum whose integer values mirror
+> `onnx.TensorProto.DataType`.
+
 ### 7. Tensor Metadata Lives on Values
 
 `TensorType` is attached to `Value`, not to `Node`.
 
 This keeps type information aligned with actual data flow and avoids duplicating metadata across producers and
 consumers.
+
+> **Implementation**: `ir.TensorType` is a frozen dataclass. Conversion between ONNX / PyTorch dtypes and
+> `ir.DType` is handled by `utils.dtype.onnx_dtype_to_ir()` and `utils.dtype.ir_dtype_to_torch()` —
+> keeping the IR layer free of `onnx` and `torch` dependencies.
 
 ### 8. Single Producer Invariant
 
@@ -198,6 +208,41 @@ This makes traversal and emission predictable by construction.
 ### 13. Graph Inputs and Initializers Remain Distinct
 
 Graph inputs and initializers are semantically distinct and must remain distinct in the IR.
+
+---
+
+## Implementation Notes
+
+This section records design decisions made during implementation of the IR types.
+
+### DType Enum
+
+`ir.DType` is a Python `enum.Enum` whose integer values are identical to `onnx.TensorProto.DataType`.
+This alignment allows the importer to convert with `DType(elem_type)` without a lookup table, while the IR
+itself has zero dependency on the `onnx` package.
+
+Types not yet supported by the IR (e.g. `INT4`, `UINT4`, `FLOAT4E2M1`) map to `None` at import time and can
+be added to the enum as PyTorch gains native support for them.
+
+### Dim and Shape
+
+- `Dim = int | str | None` — concrete, symbolic, or unknown dimension.
+- `Shape = tuple[Dim, ...] | None` — `None` means entirely unknown rank and shape.
+
+Symbolic dimensions are represented as plain `str` values (e.g. `"batch"`, `"seq_len"`).  This is sufficient
+for Milestone 1; compatibility with `torch.export` `SymInt` may require a richer representation later.
+
+### Dtype Mapping Utilities
+
+Two functions in `utils.dtype` bridge the IR boundary:
+
+| Function | Direction | Dependency |
+|----------|-----------|------------|
+| `onnx_dtype_to_ir(elem_type)` | ONNX → IR | `onnx` (importer side) |
+| `ir_dtype_to_torch(dtype)` | IR → PyTorch | `torch` (emitter side, lazy import) |
+
+`torch` is imported lazily inside `ir_dtype_to_torch` to keep import time fast for modules that only need
+the IR layer.
 
 Normalization may unify how their values are accessed, but the graph boundary contract must preserve which
 values are runtime inputs and which are statically bound constants.
