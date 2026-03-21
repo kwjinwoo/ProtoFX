@@ -244,6 +244,38 @@ Two functions in `utils.dtype` bridge the IR boundary:
 `torch` is imported lazily inside `ir_dtype_to_torch` to keep import time fast for modules that only need
 the IR layer.
 
+### Value and ValueKind
+
+`ir.Value` (`src/protofx/ir/value.py`) is a frozen dataclass with the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `str` | — | Stable internal identifier, assigned externally by the graph owner |
+| `kind` | `ValueKind` | — | Origin classification (see below) |
+| `tensor_type` | `TensorType` | — | Tensor metadata (dtype + shape) |
+| `name` | `str \| None` | `None` | Original ONNX name preserved as source metadata |
+| `producer` | `Node \| None` | `None` | The IR node that produced this value |
+
+`ir.ValueKind` is an `enum.Enum` with `auto()` values:
+
+- `GRAPH_INPUT` — a runtime graph input
+- `NODE_OUTPUT` — an output produced by an IR node
+- `SENTINEL` — a placeholder for an omitted optional ONNX input
+- `CONSTANT` — a constant produced by a `Constant` op during import
+- `INITIALIZER` — a graph-level initializer (pretrained weight, etc.)
+
+**Immutability**: `Value` is frozen. To update metadata (e.g. `tensor_type`, `name`), callers use
+`dataclasses.replace()` to produce a new instance. This is consistent with `TensorType` being frozen.
+
+**Identity**: `id` uniqueness is not enforced by `Value` itself. The graph owner (future `ir.Graph`) is
+responsible for ensuring all `Value` ids are unique within a graph.
+
+**Kind comparison**: callers compare kinds directly (`value.kind == ValueKind.SENTINEL`) rather than using
+helper properties. This keeps the `Value` API surface minimal and explicit.
+
+**Node stub**: `ir.Node` (`src/protofx/ir/node.py`) is currently a minimal stub class. The full implementation
+will be added when the `Node` IR type is developed.
+
 Normalization may unify how their values are accessed, but the graph boundary contract must preserve which
 values are runtime inputs and which are statically bound constants.
 
