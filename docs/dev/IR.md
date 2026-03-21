@@ -66,6 +66,176 @@ The direct path is reasonable for a narrow demo converter. It is not the right f
 - Encoding every backend-specific lowering detail in the IR.
 - Performing aggressive graph rewrites in Milestone 1.
 
+## IR Invariants
+
+This section defines the accepted invariants for the initial ProtoFX IR.
+
+These invariants are intended to be a semi-public developer contract. Contributors may rely on them when
+working on import, validation, and emission, but the document still reflects an early-stage architecture and
+may be refined in later milestones if the project discovers a better boundary.
+
+### 1. Value-Centric Data Flow
+
+All data-flow units are represented as `Value` objects.
+
+This includes:
+
+- graph inputs
+- node outputs
+- constants
+- initializers
+- explicit placeholders for omitted optional inputs
+
+ProtoFX therefore treats values, not edges, as the primary graph connectivity model.
+
+### 2. Constant Interface with Source Preservation
+
+Initializers and `Constant` op outputs share a common constant interface inside the IR.
+
+However, the IR must preserve their source kind as metadata so that later stages can still distinguish:
+
+- graph-sourced initializers
+- node-produced constants
+- other literal-like constant forms introduced during normalization
+
+This keeps the importer and emitter simple without discarding provenance needed for diagnostics and future
+lowering policies.
+
+### 3. Explicit Omitted Optional Inputs
+
+An omitted optional ONNX input is represented by a dedicated sentinel `Value`.
+
+This is required to preserve positional input contracts without overloading Python `None` semantics or silently
+removing inputs from ordered input lists.
+
+The sentinel must be distinguishable from ordinary runtime values.
+
+### 4. Multi-Output Nodes Produce Independent Values
+
+A node with multiple outputs must produce one distinct `Value` per output.
+
+Those outputs remain ordered according to the ONNX operator contract.
+
+ProtoFX does not model node outputs as a tuple-like aggregate object in the base IR.
+
+### 5. Stable Internal Identity
+
+`Value` identity is based on stable internal identifiers, not directly on ONNX names.
+
+Original ONNX names should be preserved as source metadata when available, but internal graph correctness must
+not depend on them.
+
+This avoids importer fragility caused by unnamed outputs, duplicate names, or backend-specific naming quirks.
+
+### 6. Rich Unknown Representation for Tensor Metadata
+
+`TensorType` must be able to distinguish at least the following cases:
+
+- unknown shape
+- scalar shape
+- empty dimensions
+- partially known symbolic dimensions
+- fully known shapes
+
+ProtoFX does not collapse all incomplete metadata into a single generic "unknown" state.
+
+### 7. Tensor Metadata Lives on Values
+
+`TensorType` is attached to `Value`, not to `Node`.
+
+This keeps type information aligned with actual data flow and avoids duplicating metadata across producers and
+consumers.
+
+### 8. Single Producer Invariant
+
+Every non-input, non-sentinel `Value` must have exactly one producer.
+
+This establishes an SSA-like discipline that simplifies validation, diagnostics, and future graph reasoning.
+
+Expected exceptions are only those values that are created by graph boundaries or dedicated normalization rules,
+such as graph inputs and omitted-input sentinels.
+
+### 9. Ordered Inputs and Outputs
+
+Node inputs and outputs preserve ONNX positional order.
+
+The IR may normalize meaning, but it must not reorder operator interfaces into a custom semantic layout.
+
+This keeps importer, validation, and emitter behavior aligned with ONNX schemas.
+
+### 10. Attribute Normalization Happens in the Importer
+
+All node attributes are normalized into Python-native forms during import.
+
+The emitter must not depend on raw ONNX `AttributeProto` structures or re-interpret protobuf-specific storage
+details.
+
+This is one of the main architectural boundaries in ProtoFX.
+
+### 11. Source Provenance Is Preserved
+
+The IR should retain enough source metadata to produce useful diagnostics and debugging output.
+
+At minimum, the IR should preserve, when available:
+
+- original node names
+- output names
+- operator type and domain
+- opset context
+- graph boundary provenance
+
+Internal identifiers are authoritative for correctness, but source metadata remains important for usability.
+
+### 12. Graph Nodes Remain in Topological Order
+
+`ir.Graph.nodes` must remain topologically ordered.
+
+Any importer or future pass that would violate this invariant is responsible for restoring valid order before the
+graph is handed to downstream stages.
+
+This makes traversal and emission predictable by construction.
+
+### 13. Graph Inputs and Initializers Remain Distinct
+
+Graph inputs and initializers are semantically distinct and must remain distinct in the IR.
+
+Normalization may unify how their values are accessed, but the graph boundary contract must preserve which
+values are runtime inputs and which are statically bound constants.
+
+### 14. Control-Flow Readiness Without Early Over-Commitment
+
+Milestone 1 invariants should preserve future extensibility for control flow, but they do not yet define a full
+region or subgraph ownership model.
+
+ProtoFX should avoid baking in assumptions that would prevent `If`, `Loop`, or `Scan`, while also avoiding a
+premature full control-flow abstraction before those operators are designed in detail.
+
+### 15. Strict Validation Policy
+
+IR validation should be strict.
+
+When the importer produces invalid IR, ProtoFX should fail as early as possible rather than defer structural or
+semantic problems to the emitter.
+
+Validation is expected to enforce:
+
+- graph well-formedness
+- producer and user consistency
+- ordered interface consistency
+- required attribute presence and normalized form
+- shape and dtype constraints when enough metadata is available
+
+Strict validation does not imply pretending unknown metadata is known. Unknowns remain explicit and valid when
+the source model does not provide enough information.
+
+### 16. Invariants Before Field-Level API
+
+This document fixes invariants first and intentionally stops short of standardizing a complete field-by-field API
+for each IR type.
+
+Concrete field lists and helper methods may evolve later as implementation begins, but those details must remain
+consistent with the invariants defined here.
+
 ## IR Scope
 
 The IR is the boundary between three concerns:
