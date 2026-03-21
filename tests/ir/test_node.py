@@ -158,3 +158,201 @@ class TestNodeImmutability:
         node, _ = node_with_outputs
         with pytest.raises(AttributeError):
             node.name = "new_name"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Node.create() factory
+# ---------------------------------------------------------------------------
+
+
+class TestNodeCreateFactory:
+    """Verify Node.create() produces a Node and output Values atomically."""
+
+    def test_returns_tuple_of_node_and_values(self) -> None:
+        """create() must return (Node, tuple[Value, ...])."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)),
+        )
+        result = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2, 3)), None),),
+        )
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        node, outputs = result
+        assert isinstance(node, Node)
+        assert isinstance(outputs, tuple)
+
+    def test_output_values_have_correct_producer(self) -> None:
+        """Each output Value.producer must be the newly created Node."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)),
+        )
+        node, outputs = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(4,)), None),),
+        )
+        assert len(outputs) == 1
+        assert outputs[0].producer is node
+
+    def test_node_outputs_match_returned_values(self) -> None:
+        """node.outputs must be identical to the returned outputs tuple."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        node, outputs = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
+        )
+        assert node.outputs == outputs
+
+    def test_multi_output_node(self) -> None:
+        """A node with multiple outputs must produce one Value per output."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(10,)),
+        )
+        node, outputs = Node.create(
+            id="n0",
+            op_type="Split",
+            inputs=(input_val,),
+            output_specs=(
+                ("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(5,)), None),
+                ("out1", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(5,)), None),
+            ),
+        )
+        assert len(outputs) == 2
+        assert outputs[0].id == "out0"
+        assert outputs[1].id == "out1"
+        assert outputs[0].producer is node
+        assert outputs[1].producer is node
+
+    def test_node_fields_from_create(self) -> None:
+        """Verify all Node fields are set correctly by create()."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1, 3, 224, 224)),
+        )
+        node, _ = Node.create(
+            id="n0",
+            op_type="Conv",
+            inputs=(input_val,),
+            output_specs=(
+                ("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(1, 64, 112, 112)), None),
+            ),
+            domain="",
+            opset_version=13,
+            attributes={"kernel_shape": [7, 7], "strides": [2, 2]},
+            name="conv1",
+        )
+        assert node.id == "n0"
+        assert node.op_type == "Conv"
+        assert node.domain == ""
+        assert node.opset_version == 13
+        assert node.attributes == {"kernel_shape": [7, 7], "strides": [2, 2]}
+        assert node.name == "conv1"
+        assert node.inputs == (input_val,)
+
+    def test_default_domain_is_empty_string(self) -> None:
+        """domain defaults to empty string (ONNX default domain)."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        node, _ = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
+        )
+        assert node.domain == ""
+
+    def test_default_opset_version_is_none(self) -> None:
+        """opset_version defaults to None."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        node, _ = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
+        )
+        assert node.opset_version is None
+
+    def test_default_attributes_is_empty_dict(self) -> None:
+        """attributes defaults to an empty dict."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        node, _ = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
+        )
+        assert node.attributes == {}
+
+    def test_default_name_is_none(self) -> None:
+        """name defaults to None."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        node, _ = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
+        )
+        assert node.name is None
+
+    def test_output_value_name_preserved(self) -> None:
+        """Output Value name should match the spec."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        _, outputs = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), "relu_out"),),
+        )
+        assert outputs[0].name == "relu_out"
+
+    def test_output_value_kind_preserved(self) -> None:
+        """Output Value kind should match the spec."""
+        input_val = Value(
+            id="in0",
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+        )
+        _, outputs = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
+        )
+        assert outputs[0].kind == ValueKind.NODE_OUTPUT
