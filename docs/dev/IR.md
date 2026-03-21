@@ -258,6 +258,140 @@ Milestone 1 should keep the IR small. A good initial scope is:
 No additional node taxonomy is required yet. If control flow arrives later, region or subgraph support can be
 added incrementally rather than designed upfront in full generality.
 
+## Recommended Development Order
+
+IR elements should be developed in dependency order rather than by container size or class name.
+
+The recommended sequence is:
+
+1. **IR invariants**
+2. **`TensorType`**
+3. **`Value`**
+4. **`Node`**
+5. **`Graph`**
+6. **Constant and initializer normalization**
+7. **Validation and analysis boundary**
+8. **Importer-to-IR contract**
+9. **IR-to-emitter contract**
+
+### 1. IR invariants
+
+Before implementing concrete classes, define the structural rules that all IR objects must satisfy.
+
+Examples include:
+
+- every data-flow result is represented as a `Value`
+- optional or omitted inputs have an explicit representation
+- node inputs and outputs are ordered
+- initializers and constants follow one normalization policy
+- unknown shape and scalar shape are not conflated
+
+Without these invariants, later class design tends to drift and requires rework.
+
+### 2. `TensorType`
+
+`TensorType` should be defined early because it is a leaf dependency for both `Value` and validation.
+
+It should establish:
+
+- dtype representation
+- known versus unknown rank
+- known versus symbolic dimensions
+- scalar and empty-shape handling
+
+### 3. `Value`
+
+`Value` comes before `Node` because ProtoFX IR is value-centric.
+
+This type defines the graph's actual data-flow model:
+
+- producer reference
+- user list
+- metadata attachment
+- value kind such as input, constant, or optional placeholder
+
+### 4. `Node`
+
+Only after `Value` is stable should `Node` be defined.
+
+`Node` should remain a normalized semantic operation with:
+
+- `op_type`
+- `domain`
+- normalized attributes
+- ordered input values
+- ordered output values
+- source metadata for diagnostics
+
+### 5. `Graph`
+
+`Graph` should be assembled after `Value` and `Node` semantics are clear.
+
+At that point it can own:
+
+- ordered graph inputs and outputs
+- topologically ordered nodes
+- value lookup tables
+- graph-level metadata and constant bindings
+
+Defining `Graph` too early usually produces a shallow container without meaningful invariants.
+
+### 6. Constant and initializer normalization
+
+This should be treated as a dedicated design step rather than a side effect of node import.
+
+The importer must decide how to represent:
+
+- graph initializers
+- `Constant` op outputs
+- scalar literals
+- omitted optional inputs
+
+This is one of the main points where direct conversion designs become inconsistent.
+
+### 7. Validation and analysis boundary
+
+Validation is not an optional add-on. It is part of the reason the IR exists.
+
+Once the core model is defined, ProtoFX should add checks for:
+
+- graph well-formedness
+- producer and user consistency
+- arity mismatches
+- invalid attribute combinations
+- basic shape and dtype sanity when metadata is available
+
+### 8. Importer-to-IR contract
+
+After the IR model is stable, define exactly what the importer guarantees.
+
+That contract should cover:
+
+- attribute normalization
+- input versus initializer resolution
+- output naming or identification policy
+- opset and domain metadata attachment
+- source provenance retention
+
+### 9. IR-to-emitter contract
+
+The emitter contract should be finalized last.
+
+Its purpose is to ensure that backend emission consumes only normalized IR data and does not rely on raw ONNX
+protobuf details.
+
+### What Not to Prioritize Early
+
+The following should stay out of the initial development sequence unless a concrete requirement appears:
+
+- an explicit `Edge` class
+- a generic pass manager
+- optimization rewrite infrastructure
+- fully general control-flow region modeling
+- backend-agnostic compiler-style abstractions
+
+ProtoFX should first establish a stable thin normalized IR, not a full compiler framework.
+
 ## Summary
 
 ProtoFX IR is not an optional abstraction layer added for theoretical purity.

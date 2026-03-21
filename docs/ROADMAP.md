@@ -11,6 +11,8 @@ Decisions that affect architecture are recorded in [docs/dev/ARCHITECTURE.md](de
 
 Core infrastructure required before any op handler can be written.
 
+Implementation order for IR foundations is documented in [docs/dev/IR.md](dev/IR.md).
+
 | Status | Item |
 |--------|------|
 | 📋 | Thin normalized IR (`ir.Graph`, `ir.Node`, `ir.Value`, `ir.TensorType`) |
