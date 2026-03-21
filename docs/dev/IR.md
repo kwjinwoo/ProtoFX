@@ -273,8 +273,42 @@ responsible for ensuring all `Value` ids are unique within a graph.
 **Kind comparison**: callers compare kinds directly (`value.kind == ValueKind.SENTINEL`) rather than using
 helper properties. This keeps the `Value` API surface minimal and explicit.
 
-**Node stub**: `ir.Node` (`src/protofx/ir/node.py`) is currently a minimal stub class. The full implementation
-will be added when the `Node` IR type is developed.
+**Node stub**: `ir.Node` (`src/protofx/ir/node.py`) is now a frozen dataclass. See the *Node and
+AttributeValue* section below for details.
+
+### Node and AttributeValue
+
+`ir.Node` (`src/protofx/ir/node.py`) is a frozen dataclass with the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `str` | — | Stable internal identifier, assigned externally by the graph owner |
+| `op_type` | `str` | — | ONNX operator type (e.g. `"Relu"`, `"Conv"`) |
+| `inputs` | `tuple[Value, ...]` | — | Ordered input `Value` references (ONNX positional order) |
+| `outputs` | `tuple[Value, ...]` | `()` | Ordered output `Value` references, one per operator output |
+| `domain` | `str` | `""` | ONNX operator domain (empty string = default domain) |
+| `opset_version` | `int \| None` | `None` | ONNX opset version for this node |
+| `attributes` | `dict[str, AttributeValue]` | `{}` | Normalized Python-native attributes |
+| `name` | `str \| None` | `None` | Original ONNX node name preserved as source metadata |
+
+**AttributeValue type alias**: `int | float | str | bytes | list[int] | list[float] | list[str] | list[bytes]`.
+All ONNX attributes are normalized into these Python-native forms during import. The emitter must not depend on
+raw `onnx.AttributeProto` structures. Tensor-typed attributes (e.g. constant `value` on `Constant` nodes) are
+not yet included and will be added when the importer is developed.
+
+**Immutability and factory pattern**: `Node` is frozen like `Value`. Because `Node.outputs` contains `Value`
+instances whose `producer` field points back to the same `Node`, a circular reference exists at construction
+time. This is resolved by the `Node.create()` classmethod factory:
+
+1. Construct a `Node` with `outputs=()` (the frozen default).
+2. Create each output `Value` with `producer=node`.
+3. Use `object.__setattr__(node, "outputs", outputs)` to bypass the frozen restriction exactly once.
+
+`Node.create()` returns `(Node, tuple[Value, ...])` — the caller (typically the importer) destructures the
+result and registers the output `Value` instances in the graph value table.
+
+**Identity**: like `Value`, `id` uniqueness is not enforced by `Node` itself. The graph owner (future
+`ir.Graph`) is responsible for ensuring all `Node` ids are unique within a graph.
 
 Normalization may unify how their values are accessed, but the graph boundary contract must preserve which
 values are runtime inputs and which are statically bound constants.
