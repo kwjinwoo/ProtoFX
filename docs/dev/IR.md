@@ -10,6 +10,15 @@ The IR is intentionally small. It is not a second copy of ONNX and it is not a g
 Its purpose is to normalize ONNX graph semantics into a backend-neutral form that is simple to validate,
 analyze, and emit into `torch.fx.GraphModule`.
 
+The IR will be **graph-owned and transform-friendly**:
+
+- `ir.Graph` is the owner of topology, node/value registration, and use-def consistency.
+- `ir.Node` and `ir.Value` are not frozen dataclasses.
+- `ir.TensorType` remains an immutable value object.
+- Public convenience accessors such as `value.producer`, `value.users`, `node.inputs`, and `node.outputs`
+	remain part of the developer-facing API, but their consistency is maintained by `ir.Graph` rather than by
+	circular constructor patterns.
+
 ## Status
 
 Accepted.
@@ -65,6 +74,25 @@ The direct path is reasonable for a narrow demo converter. It is not the right f
 - Introducing a full compiler optimization IR.
 - Encoding every backend-specific lowering detail in the IR.
 - Performing aggressive graph rewrites in Milestone 1.
+
+## Ownership and Mutability
+
+ProtoFX needs IR-level normalization and graph transforms before emission. That makes full-object immutability
+the wrong default for graph structure.
+
+The accepted ownership model is:
+
+- `ir.Graph` owns node membership, value membership, topological order, and structural consistency.
+- `ir.Node` and `ir.Value` are mutable IR entities whose updates happen through graph-aware APIs.
+- `ir.TensorType` is an immutable value object attached to `Value` instances.
+
+This split is intentional.
+
+- Graph structure is expected to change during import normalization and later analysis or rewrite passes.
+- Tensor metadata behaves like plain value data and is safer to replace than to mutate in place.
+
+ProtoFX therefore does **not** use frozen dataclasses for `Node` and `Value` as an architectural constraint.
+The previous frozen `Node.create()` factory pattern is superseded by graph-managed construction.
 
 ## IR Invariants
 
@@ -209,6 +237,29 @@ This makes traversal and emission predictable by construction.
 
 Graph inputs and initializers are semantically distinct and must remain distinct in the IR.
 
+### 14. Graph Owns Structural Consistency
+
+Producer links, user links, node ordering, and graph membership are owned by `ir.Graph`.
+
+`Node` and `Value` may expose convenience accessors for these relationships, but `Graph` is the component that
+must create, update, and validate them.
+
+This rule exists to avoid distributing structural invariants across several mutable objects.
+
+### 15. Public API Convenience Does Not Imply Distributed Ownership
+
+ProtoFX keeps direct-feeling developer APIs where they help readability.
+
+For example, code may still read:
+
+- `value.producer`
+- `value.users`
+- `node.inputs`
+- `node.outputs`
+
+However, those conveniences do not make `Value` or `Node` the owners of graph consistency. Ownership remains in
+`Graph`, which is the only place allowed to perform structural mutations without breaking invariants.
+
 ---
 
 ## Implementation Notes
@@ -246,7 +297,9 @@ the IR layer.
 
 ### Value and ValueKind
 
-`ir.Value` (`src/protofx/ir/value.py`) is a frozen dataclass with the following fields:
+`ir.Value` (`src/protofx/ir/value.py`) is a mutable IR entity representing one data-flow object in a graph.
+
+The expected field shape is:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -254,7 +307,8 @@ the IR layer.
 | `kind` | `ValueKind` | — | Origin classification (see below) |
 | `tensor_type` | `TensorType` | — | Tensor metadata (dtype + shape) |
 | `name` | `str \| None` | `None` | Original ONNX name preserved as source metadata |
-| `producer` | `Node \| None` | `None` | The IR node that produced this value |
+| `producer` | `Node \| None` | `None` | Convenience view of the producing node |
+| `users` | `tuple[Node, ...]` or graph-backed view | `()` | Convenience view of consuming nodes |
 
 `ir.ValueKind` is an `enum.Enum` with `auto()` values:
 
@@ -264,8 +318,11 @@ the IR layer.
 - `CONSTANT` — a constant produced by a `Constant` op during import
 - `INITIALIZER` — a graph-level initializer (pretrained weight, etc.)
 
-**Immutability**: `Value` is frozen. To update metadata (e.g. `tensor_type`, `name`), callers use
-`dataclasses.replace()` to produce a new instance. This is consistent with `TensorType` being frozen.
+**Mutability**: `Value` is intentionally not frozen. Import normalization and later graph transforms need to
+update producer links, user links, names, and tensor metadata without replacing the entire object identity.
+
+`tensor_type` updates should still prefer replacement of the `TensorType` instance rather than in-place
+mutation of tensor metadata internals.
 
 **Identity**: `id` uniqueness is not enforced by `Value` itself. The graph owner (future `ir.Graph`) is
 responsible for ensuring all `Value` ids are unique within a graph.
@@ -273,19 +330,21 @@ responsible for ensuring all `Value` ids are unique within a graph.
 **Kind comparison**: callers compare kinds directly (`value.kind == ValueKind.SENTINEL`) rather than using
 helper properties. This keeps the `Value` API surface minimal and explicit.
 
-**Node stub**: `ir.Node` (`src/protofx/ir/node.py`) is now a frozen dataclass. See the *Node and
-AttributeValue* section below for details.
+**Ownership**: `Value` does not own consistency of its `producer` or `users` relationships. Those are managed by
+`Graph` mutation APIs.
 
 ### Node and AttributeValue
 
-`ir.Node` (`src/protofx/ir/node.py`) is a frozen dataclass with the following fields:
+`ir.Node` (`src/protofx/ir/node.py`) is a mutable IR entity representing one normalized operation.
+
+The expected field shape is:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `id` | `str` | — | Stable internal identifier, assigned externally by the graph owner |
 | `op_type` | `str` | — | ONNX operator type (e.g. `"Relu"`, `"Conv"`) |
-| `inputs` | `tuple[Value, ...]` | — | Ordered input `Value` references (ONNX positional order) |
-| `outputs` | `tuple[Value, ...]` | `()` | Ordered output `Value` references, one per operator output |
+| `inputs` | `tuple[Value, ...]` or graph-backed view | — | Ordered input `Value` references preserving ONNX positional order |
+| `outputs` | `tuple[Value, ...]` or graph-backed view | `()` | Ordered output `Value` references, one per operator output |
 | `domain` | `str` | `""` | ONNX operator domain (empty string = default domain) |
 | `opset_version` | `int \| None` | `None` | ONNX opset version for this node |
 | `attributes` | `dict[str, AttributeValue]` | `{}` | Normalized Python-native attributes |
@@ -296,16 +355,12 @@ All ONNX attributes are normalized into these Python-native forms during import.
 raw `onnx.AttributeProto` structures. Tensor-typed attributes (e.g. constant `value` on `Constant` nodes) are
 not yet included and will be added when the importer is developed.
 
-**Immutability and factory pattern**: `Node` is frozen like `Value`. Because `Node.outputs` contains `Value`
-instances whose `producer` field points back to the same `Node`, a circular reference exists at construction
-time. This is resolved by the `Node.create()` classmethod factory:
+**Construction model**: `Node` is not responsible for atomically resolving `Node ↔ Value` circular references.
+That responsibility belongs to `Graph`, which creates nodes, registers outputs, updates producer links, and
+maintains use-def consistency as one graph-level operation.
 
-1. Construct a `Node` with `outputs=()` (the frozen default).
-2. Create each output `Value` with `producer=node`.
-3. Use `object.__setattr__(node, "outputs", outputs)` to bypass the frozen restriction exactly once.
-
-`Node.create()` returns `(Node, tuple[Value, ...])` — the caller (typically the importer) destructures the
-result and registers the output `Value` instances in the graph value table.
+This replaces the earlier frozen `Node.create()` factory pattern. Graph-aware construction is preferred because
+ProtoFX expects normalization and transform passes to edit graph structure after import.
 
 **Identity**: like `Value`, `id` uniqueness is not enforced by `Node` itself. The graph owner (future
 `ir.Graph`) is responsible for ensuring all `Node` ids are unique within a graph.
@@ -313,7 +368,7 @@ result and registers the output `Value` instances in the graph value table.
 Normalization may unify how their values are accessed, but the graph boundary contract must preserve which
 values are runtime inputs and which are statically bound constants.
 
-### 14. Control-Flow Readiness Without Early Over-Commitment
+### 16. Control-Flow Readiness Without Early Over-Commitment
 
 Milestone 1 invariants should preserve future extensibility for control flow, but they do not yet define a full
 region or subgraph ownership model.
@@ -321,7 +376,7 @@ region or subgraph ownership model.
 ProtoFX should avoid baking in assumptions that would prevent `If`, `Loop`, or `Scan`, while also avoiding a
 premature full control-flow abstraction before those operators are designed in detail.
 
-### 15. Strict Validation Policy
+### 17. Strict Validation Policy
 
 IR validation should be strict.
 
@@ -339,7 +394,7 @@ Validation is expected to enforce:
 Strict validation does not imply pretending unknown metadata is known. Unknowns remain explicit and valid when
 the source model does not provide enough information.
 
-### 16. Invariants Before Field-Level API
+### 18. Invariants Before Field-Level API
 
 This document fixes invariants first and intentionally stops short of standardizing a complete field-by-field API
 for each IR type.
@@ -385,8 +440,17 @@ It should contain:
 - a value table for looking up producers, users, and metadata
 - constant and initializer bindings
 - graph-level metadata such as opset imports and source provenance
+- graph-aware mutation APIs for construction, normalization, and refactoring
 
 The graph must be simple to traverse without access to ONNX proto internals.
+
+`Graph` is the sole owner of structural consistency. It is responsible for operations such as:
+
+- creating nodes and output values together
+- replacing an input or all uses of a value
+- inserting, moving, and erasing nodes
+- updating producer and user links
+- validating topological order after mutation
 
 ### Value
 
@@ -395,8 +459,8 @@ The graph must be simple to traverse without access to ONNX proto internals.
 It should contain:
 
 - a stable identifier or name
-- a reference to its producer node, if any
-- a list of user nodes
+- a graph-backed reference to its producer node, if any
+- a graph-backed list or view of user nodes
 - tensor metadata when known
 - flags or kind information for graph inputs, constants, and optional values
 - room for symbolic shape information and future annotations
@@ -417,8 +481,8 @@ It should contain:
 - `op_type`
 - `domain`
 - normalized attributes in Python-native form
-- ordered input `Value` references
-- ordered output `Value` references
+- ordered input `Value` references exposed through graph-managed APIs
+- ordered output `Value` references exposed through graph-managed APIs
 - source metadata for diagnostics, such as the original ONNX node name
 
 Important constraint: the node must not expose raw `AttributeProto` parsing concerns to the emitter.
@@ -547,9 +611,9 @@ The recommended sequence is:
 
 1. **IR invariants**
 2. **`TensorType`**
-3. **`Value`**
-4. **`Node`**
-5. **`Graph`**
+3. **`Graph` ownership model and mutation API**
+4. **Refactor `Value` around graph-managed relationships**
+5. **Refactor `Node` around graph-managed relationships**
 6. **Constant and initializer normalization**
 7. **Validation and analysis boundary**
 8. **Importer-to-IR contract**
@@ -580,42 +644,41 @@ It should establish:
 - known versus symbolic dimensions
 - scalar and empty-shape handling
 
-### 3. `Value`
+### 3. `Graph` ownership model and mutation API
 
-`Value` comes before `Node` because ProtoFX IR is value-centric.
+`Graph` must be designed before the final `Node` and `Value` refactor because it owns structural consistency.
 
-This type defines the graph's actual data-flow model:
+This step should define:
 
-- producer reference
-- user list
-- metadata attachment
-- value kind such as input, constant, or optional placeholder
+- node and value registration rules
+- graph input and output storage
+- topological ordering guarantees
+- producer and user bookkeeping
+- mutation primitives such as node insertion, removal, and use replacement
 
-### 4. `Node`
+Without this step, `Node` and `Value` drift toward self-managed relationships and circular construction.
 
-Only after `Value` is stable should `Node` be defined.
+### 4. Refactor `Value` around graph-managed relationships
 
-`Node` should remain a normalized semantic operation with:
+Once `Graph` ownership is defined, `Value` should be reshaped into a lightweight mutable entity.
 
-- `op_type`
-- `domain`
-- normalized attributes
-- ordered input values
-- ordered output values
-- source metadata for diagnostics
+This refactor should:
 
-### 5. `Graph`
+- remove frozen-dataclass assumptions
+- keep `id`, `kind`, `tensor_type`, and `name` as direct fields
+- expose `producer` and `users` as graph-consistent accessors or graph-managed fields
+- avoid copy-on-write update patterns such as `dataclasses.replace()` for structural edits
 
-`Graph` should be assembled after `Value` and `Node` semantics are clear.
+### 5. Refactor `Node` around graph-managed relationships
 
-At that point it can own:
+After `Value` is aligned to graph ownership, `Node` should be refactored to remove constructor-time circularity.
 
-- ordered graph inputs and outputs
-- topologically ordered nodes
-- value lookup tables
-- graph-level metadata and constant bindings
+This refactor should:
 
-Defining `Graph` too early usually produces a shallow container without meaningful invariants.
+- remove the frozen `Node.create()` factory pattern
+- keep `op_type`, `domain`, `opset_version`, `attributes`, and `name` as direct node metadata
+- expose ordered inputs and outputs without making `Node` the owner of use-def consistency
+- make node creation a graph-level operation rather than a dataclass trick
 
 ### 6. Constant and initializer normalization
 
@@ -673,10 +736,46 @@ The following should stay out of the initial development sequence unless a concr
 
 ProtoFX should first establish a stable thin normalized IR, not a full compiler framework.
 
+## Refactoring Plan from the Current Implementation
+
+ProtoFX already has `TensorType`, `Value`, and `Node` skeletons in place. The current implementation uses frozen
+dataclasses for `Value` and `Node`, and a `Node.create()` factory to work around constructor-time circular
+references. That design is a reasonable bootstrap, but it is not the accepted long-term architecture.
+
+The refactor plan is:
+
+1. Introduce `ir.Graph` as the first-class owner of nodes, values, and topological order.
+2. Move node creation from `Node.create()` into graph-managed construction APIs.
+3. Remove frozen semantics from `Value` and `Node`.
+4. Replace copy-on-write mutation patterns with graph-aware updates.
+5. Preserve convenient read APIs on `Node` and `Value` so downstream importer, validation, and emitter code stays
+	readable.
+6. Add validation that checks graph membership, producer/user consistency, and topological order after mutation.
+7. Update tests to assert graph-level invariants rather than frozen-instance behavior.
+
+### Immediate Code Implications
+
+The current codebase should expect the following concrete changes:
+
+- tests that assert `FrozenInstanceError`-style behavior for `Node` and `Value` will be removed or rewritten
+- tests around `Node.create()` will move to `Graph` construction tests
+- `Value.producer` and future `Value.users` behavior will be validated through graph-managed edits
+- importer code should target `Graph.add_node(...)`-style APIs instead of building partially initialized objects
+
+### Deferred Work
+
+The following work is intentionally deferred until the graph-owned model is in place:
+
+- generic pass-manager infrastructure
+- advanced rewrite libraries
+- full control-flow region ownership
+- symbolic shape constraint solving beyond `TensorType`
+
 ## Summary
 
 ProtoFX IR is not an optional abstraction layer added for theoretical purity.
 
 It is the normalization boundary that turns ONNX serialization-oriented structures into a simple internal graph
-model suitable for validation and `torch.fx` emission. For ProtoFX, that boundary is worth keeping, but only as
-a thin normalized IR.
+model suitable for validation and `torch.fx` emission. For ProtoFX, that boundary remains intentionally thin,
+but it is now explicitly graph-owned, mutable where graph structure requires it, and designed for IR-level
+normalization and transformation.

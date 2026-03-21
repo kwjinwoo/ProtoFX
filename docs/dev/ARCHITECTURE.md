@@ -34,6 +34,9 @@ Reads `onnx.ModelProto` and converts it into the internal IR.
 A thin normalized graph representation independent of both ONNX and `torch.fx`.
 
 - Holds normalized node, value, constant, and tensor type information
+- Uses `ir.Graph` as the owner of topology and use-def relationships
+- Keeps `ir.Node` and `ir.Value` mutable enough for normalization and graph transforms
+- Preserves convenient relationship accessors (`value.producer`, `value.users`, `node.inputs`, `node.outputs`)
 - Acts as the semantic boundary between Importer and Emitter
 - Provides a stable target for validation and analysis before backend emission
 - See [IR.md](IR.md) for details
@@ -78,3 +81,7 @@ This boundary is important for two reasons:
 
 The project does **not** treat IR as a full compiler framework. It is a minimal normalization layer chosen to
 support downstream compatibility, testing, and future expansion without over-design.
+
+Within that boundary, ProtoFX treats `ir.Graph` as the structural owner of nodes, values, and topological
+ordering. This avoids embedding graph consistency rules inside individual dataclass constructors while still
+allowing a convenient object-oriented API for graph consumers.
