@@ -8,6 +8,10 @@ as a ``Value`` instance.
 """
 
 import enum
+from dataclasses import dataclass
+
+from protofx.ir.node import Node
+from protofx.ir.tensor_type import TensorType
 
 
 class ValueKind(enum.Enum):
@@ -31,3 +35,30 @@ class ValueKind(enum.Enum):
     SENTINEL = enum.auto()
     CONSTANT = enum.auto()
     INITIALIZER = enum.auto()
+
+
+@dataclass(frozen=True)
+class Value:
+    """Immutable data-flow unit in the IR graph.
+
+    All data-flow — graph inputs, node outputs, constants, initializers, and
+    omitted optional inputs — is represented as a ``Value``.
+
+    ``Value`` is frozen. To update metadata such as ``tensor_type`` or
+    ``name``, use ``dataclasses.replace()`` to produce a new instance.
+
+    Attributes:
+        id: Stable internal identifier. Assigned externally; uniqueness is
+            enforced by the graph owner, not by ``Value`` itself.
+        kind: Classification of this value's origin.
+        tensor_type: Tensor metadata (dtype and shape).
+        name: Original ONNX name preserved as source metadata, or ``None``.
+        producer: The IR ``Node`` that produces this value, or ``None`` for
+            graph inputs and sentinel values.
+    """
+
+    id: str
+    kind: ValueKind
+    tensor_type: TensorType
+    name: str | None = None
+    producer: Node | None = None
