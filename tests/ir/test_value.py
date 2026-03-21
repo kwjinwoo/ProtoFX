@@ -67,10 +67,14 @@ class TestValueConstruction:
         assert v.producer is None
 
     def test_node_output_with_producer(self) -> None:
-        tt = TensorType(dtype=DType.INT64, shape=(4,))
-        node = Node()
-        v = Value(id="y", kind=ValueKind.NODE_OUTPUT, tensor_type=tt, producer=node)
-        assert v.producer is node
+        input_val = Value(id="in0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.INT64, shape=(4,)))
+        node, outputs = Node.create(
+            id="n0",
+            op_type="Identity",
+            inputs=(input_val,),
+            output_specs=(("y", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.INT64, shape=(4,)), None),),
+        )
+        assert outputs[0].producer is node
 
     def test_sentinel_value(self) -> None:
         v = Value(id="s0", kind=ValueKind.SENTINEL, tensor_type=TensorType(dtype=None, shape=None))
@@ -126,8 +130,15 @@ class TestValueImmutability:
             value.name = "new"  # type: ignore[misc]
 
     def test_cannot_set_producer(self, value: Value) -> None:
+        input_val = Value(id="in0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        node, _ = Node.create(
+            id="n0",
+            op_type="Relu",
+            inputs=(input_val,),
+            output_specs=(("o0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(1,)), None),),
+        )
         with pytest.raises(AttributeError):
-            value.producer = Node()  # type: ignore[misc]
+            value.producer = node  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +172,14 @@ class TestValueReplacement:
 
     def test_replace_preserves_other_fields(self) -> None:
         tt = TensorType(dtype=DType.INT64, shape=(4,))
-        node = Node()
-        v = Value(id="v0", kind=ValueKind.NODE_OUTPUT, tensor_type=tt, producer=node, name="out")
+        input_val = Value(id="in0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt)
+        node, outputs = Node.create(
+            id="n0",
+            op_type="Identity",
+            inputs=(input_val,),
+            output_specs=(("v0", ValueKind.NODE_OUTPUT, tt, "out"),),
+        )
+        v = outputs[0]
         v2 = dataclasses.replace(v, name="renamed")
         assert v2.id == "v0"
         assert v2.kind == ValueKind.NODE_OUTPUT
