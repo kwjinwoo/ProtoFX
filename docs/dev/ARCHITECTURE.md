@@ -5,7 +5,7 @@
 ProtoFX is a three-stage pipeline that converts ONNX models into PyTorch `torch.fx.GraphModule` objects.
 
 ```
-ONNX ModelProto ──▶ Importer ──▶ IR ──▶ Emitter ──▶ torch.fx.GraphModule
+ONNX ModelProto ──▶ Importer ──▶ Thin Normalized IR ──▶ Validation / Analysis ──▶ Emitter ──▶ torch.fx.GraphModule
 ```
 
 ## Directory Structure
@@ -31,10 +31,11 @@ Reads `onnx.ModelProto` and converts it into the internal IR.
 
 ### IR (Intermediate Representation)
 
-A lightweight graph representation independent of both ONNX and `torch.fx`.
+A thin normalized graph representation independent of both ONNX and `torch.fx`.
 
-- Holds node, edge, and tensor type information
-- Acts as a decoupling layer between Importer and Emitter
+- Holds normalized node, value, constant, and tensor type information
+- Acts as the semantic boundary between Importer and Emitter
+- Provides a stable target for validation and analysis before backend emission
 - See [IR.md](IR.md) for details
 
 ### Emitters
@@ -43,6 +44,7 @@ Traverses the IR and creates nodes in `torch.fx.Graph`.
 
 - Constructs `torch.fx.Graph` and `torch.fx.GraphModule`
 - Converts each IR node to an FX node via the op handler registry
+- Consumes normalized IR data rather than raw ONNX protobuf structures
 - Keeps `torch` imports lazy to optimize import speed
 
 ### Ops
@@ -60,3 +62,19 @@ Shared helper modules.
 - Shape inference utilities
 - ONNX ↔ PyTorch type mapping
 - Tensor conversion helpers
+
+## Architectural Boundary
+
+ProtoFX intentionally separates three concerns:
+
+1. **Importer**: ONNX-aware parsing and normalization.
+2. **IR and validation**: internal graph structure, metadata, and structural checks.
+3. **Emitter**: FX-aware lowering from normalized IR.
+
+This boundary is important for two reasons:
+
+- ONNX protobuf details, opset quirks, and attribute decoding should not leak into FX emission code.
+- FX-specific lowering decisions should not distort the imported graph model.
+
+The project does **not** treat IR as a full compiler framework. It is a minimal normalization layer chosen to
+support downstream compatibility, testing, and future expansion without over-design.

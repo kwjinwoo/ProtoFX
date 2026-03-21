@@ -13,8 +13,9 @@ Core infrastructure required before any op handler can be written.
 
 | Status | Item |
 |--------|------|
-| 📋 | Internal IR (`ir.Graph`, `ir.Node`, `ir.Edge`, `ir.TensorType`) |
+| 📋 | Thin normalized IR (`ir.Graph`, `ir.Node`, `ir.Value`, `ir.TensorType`) |
 | 📋 | ONNX importer (`onnx.ModelProto` → IR) |
+| 📋 | IR validation and normalization boundary |
 | 📋 | `torch.fx` emitter (IR → `GraphModule`) |
 | 📋 | Op handler registry (`@register_op` decorator) |
 | 📋 | Basic test infrastructure (`tests/ops/` fixtures) |
