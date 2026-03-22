@@ -180,3 +180,44 @@ class TestValueUsersField:
         v1.users.append((n, 0))
         assert len(v1.users) == 1
         assert len(v2.users) == 0
+
+
+# ---------------------------------------------------------------------------
+# Value read-only producer/users enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestValueProducerReadOnly:
+    """Value.producer must be a read-only property — assignment raises AttributeError."""
+
+    def test_producer_assignment_raises(self) -> None:
+        """Directly assigning to value.producer must raise AttributeError."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = Node(id="n0", op_type="Relu")
+        with pytest.raises(AttributeError):
+            v.producer = node  # type: ignore[misc]
+
+    def test_producer_default_is_none(self) -> None:
+        """A freshly constructed Value has producer == None."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        assert v.producer is None
+
+
+class TestValueUsersReadOnly:
+    """Value.users must be a read-only tuple — mutation is forbidden."""
+
+    def test_users_returns_tuple(self) -> None:
+        """value.users must return a tuple, not a list."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        assert isinstance(v.users, tuple)
+
+    def test_users_default_is_empty_tuple(self) -> None:
+        """A freshly constructed Value has users == ()."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        assert v.users == ()
+
+    def test_users_assignment_raises(self) -> None:
+        """Directly assigning to value.users must raise AttributeError."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        with pytest.raises(AttributeError):
+            v.users = []  # type: ignore[misc]
