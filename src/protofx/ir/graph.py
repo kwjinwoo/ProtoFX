@@ -255,3 +255,63 @@ class Graph:
         # Step 4: remove node
         self.nodes.remove(node)
         del self._nodes[node.id]
+
+    # ------------------------------------------------------------------
+    # Analysis
+    # ------------------------------------------------------------------
+
+    def topological_sort(self) -> list[Node]:
+        """Return nodes in topological order using Kahn's algorithm.
+
+        A node is "ready" when every ``Value`` in its ``inputs`` list that
+        is produced by another ``Node`` (i.e. ``ValueKind.NODE_OUTPUT``)
+        has already been emitted.  Graph inputs and other external values
+        carry no inter-node dependency.
+
+        Returns:
+            A new list of ``Node`` instances in topological order.
+
+        Raises:
+            ValueError: If the graph contains a cycle.
+        """
+        from collections import deque
+
+        # Build in-degree map: for each node, count how many producer-nodes
+        # must come before it.
+        in_degree: dict[str, int] = {}
+        for node in self.nodes:
+            count = 0
+            seen_producers: set[str] = set()
+            for inp_value in node.inputs:
+                if inp_value.kind == ValueKind.NODE_OUTPUT and inp_value.producer is not None:
+                    pid = inp_value.producer.id
+                    if pid not in seen_producers:
+                        seen_producers.add(pid)
+                        count += 1
+            in_degree[node.id] = count
+
+        # Seed the queue with nodes that have zero in-degree.
+        queue: deque[Node] = deque()
+        for node in self.nodes:
+            if in_degree[node.id] == 0:
+                queue.append(node)
+
+        result: list[Node] = []
+        while queue:
+            node = queue.popleft()
+            result.append(node)
+            # For each output value, decrement in-degree of consumer nodes.
+            for out_value in node.outputs:
+                seen_consumers: set[str] = set()
+                for consumer, _slot in out_value.users:
+                    if consumer.id not in seen_consumers:
+                        seen_consumers.add(consumer.id)
+                        in_degree[consumer.id] -= 1
+                        if in_degree[consumer.id] == 0:
+                            queue.append(consumer)
+
+        if len(result) != len(self.nodes):
+            msg = "graph contains a cycle"
+            raise ValueError(msg)
+
+        return result
