@@ -1,11 +1,12 @@
-"""Tests for protofx.ir.node.AttributeValue type alias and Node dataclass."""
+"""Tests for protofx.ir.node -- mutable Node and AttributeValue."""
 
 import dataclasses
 
 import pytest
 
-from protofx.ir import DType, TensorType, Value, ValueKind
+from protofx.ir import DType, TensorType
 from protofx.ir.node import AttributeValue, Node
+from protofx.ir.value import Value, ValueKind
 
 
 class TestAttributeValueTypeAlias:
@@ -57,21 +58,21 @@ class TestAttributeValueTypeAlias:
 
 
 # ---------------------------------------------------------------------------
-# Node dataclass fields
+# Node is a mutable dataclass
 # ---------------------------------------------------------------------------
 
 
 class TestNodeIsDataclass:
-    """Verify Node is a frozen dataclass."""
+    """Verify Node is a dataclass (not frozen)."""
 
     def test_is_dataclass(self) -> None:
         assert dataclasses.is_dataclass(Node)
 
-    def test_is_frozen(self) -> None:
-        """Node instances must be immutable."""
-        fields = dataclasses.fields(Node)
-        # Frozen dataclass raises FrozenInstanceError on setattr
-        assert len(fields) > 0
+    def test_is_not_frozen(self) -> None:
+        """Node must NOT be frozen -- it is mutable, owned by Graph."""
+        node = Node(id="n0", op_type="Relu")
+        node.op_type = "Sigmoid"
+        assert node.op_type == "Sigmoid"
 
 
 class TestNodeFields:
@@ -110,249 +111,125 @@ class TestNodeFields:
         assert "name" in fields
 
 
-class TestNodeImmutability:
-    """Node must be frozen (immutable)."""
+# ---------------------------------------------------------------------------
+# Node mutability -- Graph is the owner, but Node allows assignment
+# ---------------------------------------------------------------------------
+
+
+class TestNodeMutability:
+    """Node must be mutable -- all field assignments succeed."""
 
     @pytest.fixture()
-    def node_with_outputs(self) -> tuple[Node, tuple[Value, ...]]:
-        """Create a minimal Node via the factory."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)),
-        )
-        node, outputs = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2, 3)), "relu_out"),),
-        )
-        return node, outputs
+    def node(self) -> Node:
+        """Create a minimal mutable Node."""
+        return Node(id="n0", op_type="Relu")
 
-    def test_cannot_set_id(self, node_with_outputs: tuple[Node, tuple[Value, ...]]) -> None:
-        node, _ = node_with_outputs
-        with pytest.raises(AttributeError):
-            node.id = "other"  # type: ignore[misc]
+    def test_can_set_id(self, node: Node) -> None:
+        node.id = "n99"
+        assert node.id == "n99"
 
-    def test_cannot_set_op_type(self, node_with_outputs: tuple[Node, tuple[Value, ...]]) -> None:
-        node, _ = node_with_outputs
-        with pytest.raises(AttributeError):
-            node.op_type = "Sigmoid"  # type: ignore[misc]
+    def test_can_set_op_type(self, node: Node) -> None:
+        node.op_type = "Sigmoid"
+        assert node.op_type == "Sigmoid"
 
-    def test_cannot_set_inputs(self, node_with_outputs: tuple[Node, tuple[Value, ...]]) -> None:
-        node, _ = node_with_outputs
-        with pytest.raises(AttributeError):
-            node.inputs = ()  # type: ignore[misc]
+    def test_can_set_inputs(self, node: Node) -> None:
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node.inputs = [v]
+        assert node.inputs == [v]
 
-    def test_cannot_set_outputs(self, node_with_outputs: tuple[Node, tuple[Value, ...]]) -> None:
-        node, _ = node_with_outputs
-        with pytest.raises(AttributeError):
-            node.outputs = ()  # type: ignore[misc]
+    def test_can_set_outputs(self, node: Node) -> None:
+        v = Value(id="v1", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node.outputs = [v]
+        assert node.outputs == [v]
 
-    def test_cannot_set_attributes(self, node_with_outputs: tuple[Node, tuple[Value, ...]]) -> None:
-        node, _ = node_with_outputs
-        with pytest.raises(AttributeError):
-            node.attributes = {}  # type: ignore[misc]
+    def test_can_set_attributes(self, node: Node) -> None:
+        node.attributes = {"kernel_shape": [3, 3]}
+        assert node.attributes == {"kernel_shape": [3, 3]}
 
-    def test_cannot_set_name(self, node_with_outputs: tuple[Node, tuple[Value, ...]]) -> None:
-        node, _ = node_with_outputs
-        with pytest.raises(AttributeError):
-            node.name = "new_name"  # type: ignore[misc]
+    def test_can_set_name(self, node: Node) -> None:
+        node.name = "my_relu"
+        assert node.name == "my_relu"
 
+    def test_can_set_domain(self, node: Node) -> None:
+        node.domain = "com.custom"
+        assert node.domain == "com.custom"
 
-# ---------------------------------------------------------------------------
-# Node.create() factory
-# ---------------------------------------------------------------------------
-
-
-class TestNodeCreateFactory:
-    """Verify Node.create() produces a Node and output Values atomically."""
-
-    def test_returns_tuple_of_node_and_values(self) -> None:
-        """create() must return (Node, tuple[Value, ...])."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)),
-        )
-        result = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2, 3)), None),),
-        )
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-        node, outputs = result
-        assert isinstance(node, Node)
-        assert isinstance(outputs, tuple)
-
-    def test_output_values_have_correct_producer(self) -> None:
-        """Each output Value.producer must be the newly created Node."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)),
-        )
-        node, outputs = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(4,)), None),),
-        )
-        assert len(outputs) == 1
-        assert outputs[0].producer is node
-
-    def test_node_outputs_match_returned_values(self) -> None:
-        """node.outputs must be identical to the returned outputs tuple."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        node, outputs = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
-        )
-        assert node.outputs == outputs
-
-    def test_multi_output_node(self) -> None:
-        """A node with multiple outputs must produce one Value per output."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(10,)),
-        )
-        node, outputs = Node.create(
-            id="n0",
-            op_type="Split",
-            inputs=(input_val,),
-            output_specs=(
-                ("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(5,)), None),
-                ("out1", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(5,)), None),
-            ),
-        )
-        assert len(outputs) == 2
-        assert outputs[0].id == "out0"
-        assert outputs[1].id == "out1"
-        assert outputs[0].producer is node
-        assert outputs[1].producer is node
-
-    def test_node_fields_from_create(self) -> None:
-        """Verify all Node fields are set correctly by create()."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1, 3, 224, 224)),
-        )
-        node, _ = Node.create(
-            id="n0",
-            op_type="Conv",
-            inputs=(input_val,),
-            output_specs=(
-                ("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(1, 64, 112, 112)), None),
-            ),
-            domain="",
-            opset_version=13,
-            attributes={"kernel_shape": [7, 7], "strides": [2, 2]},
-            name="conv1",
-        )
-        assert node.id == "n0"
-        assert node.op_type == "Conv"
-        assert node.domain == ""
+    def test_can_set_opset_version(self, node: Node) -> None:
+        node.opset_version = 13
         assert node.opset_version == 13
-        assert node.attributes == {"kernel_shape": [7, 7], "strides": [2, 2]}
-        assert node.name == "conv1"
-        assert node.inputs == (input_val,)
 
-    def test_default_domain_is_empty_string(self) -> None:
-        """domain defaults to empty string (ONNX default domain)."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        node, _ = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
-        )
+
+# ---------------------------------------------------------------------------
+# Node defaults
+# ---------------------------------------------------------------------------
+
+
+class TestNodeDefaults:
+    """Verify default values for optional Node fields."""
+
+    def test_inputs_default_empty_list(self) -> None:
+        node = Node(id="n0", op_type="Relu")
+        assert node.inputs == []
+
+    def test_outputs_default_empty_list(self) -> None:
+        node = Node(id="n0", op_type="Relu")
+        assert node.outputs == []
+
+    def test_domain_default_empty_string(self) -> None:
+        node = Node(id="n0", op_type="Relu")
         assert node.domain == ""
 
-    def test_default_opset_version_is_none(self) -> None:
-        """opset_version defaults to None."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        node, _ = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
-        )
+    def test_opset_version_default_none(self) -> None:
+        node = Node(id="n0", op_type="Relu")
         assert node.opset_version is None
 
-    def test_default_attributes_is_empty_dict(self) -> None:
-        """attributes defaults to an empty dict."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        node, _ = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
-        )
+    def test_attributes_default_empty_dict(self) -> None:
+        node = Node(id="n0", op_type="Relu")
         assert node.attributes == {}
 
-    def test_default_name_is_none(self) -> None:
-        """name defaults to None."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        node, _ = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
-        )
+    def test_name_default_none(self) -> None:
+        node = Node(id="n0", op_type="Relu")
         assert node.name is None
 
-    def test_output_value_name_preserved(self) -> None:
-        """Output Value name should match the spec."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        _, outputs = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), "relu_out"),),
-        )
-        assert outputs[0].name == "relu_out"
 
-    def test_output_value_kind_preserved(self) -> None:
-        """Output Value kind should match the spec."""
-        input_val = Value(
-            id="in0",
-            kind=ValueKind.GRAPH_INPUT,
-            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
-        )
-        _, outputs = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("out0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(2,)), None),),
-        )
-        assert outputs[0].kind == ValueKind.NODE_OUTPUT
+# ---------------------------------------------------------------------------
+# Node.create() must not exist
+# ---------------------------------------------------------------------------
+
+
+class TestNodeCreateRemoved:
+    """Node.create() factory must be removed -- Graph owns construction."""
+
+    def test_no_create_classmethod(self) -> None:
+        assert not hasattr(Node, "create"), "Node.create() should be removed; Graph owns node construction"
+
+
+# ---------------------------------------------------------------------------
+# Node inputs/outputs are lists (not tuples)
+# ---------------------------------------------------------------------------
+
+
+class TestNodeListInterfaces:
+    """Node.inputs and Node.outputs must be list, not tuple."""
+
+    def test_inputs_is_list(self) -> None:
+        node = Node(id="n0", op_type="Relu")
+        assert isinstance(node.inputs, list)
+
+    def test_outputs_is_list(self) -> None:
+        node = Node(id="n0", op_type="Relu")
+        assert isinstance(node.outputs, list)
+
+    def test_inputs_appendable(self) -> None:
+        """Inputs list supports append (mutable)."""
+        node = Node(id="n0", op_type="Relu")
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        node.inputs.append(v)
+        assert len(node.inputs) == 1
+
+    def test_outputs_appendable(self) -> None:
+        """Outputs list supports append (mutable)."""
+        node = Node(id="n0", op_type="Relu")
+        v = Value(id="v0", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        node.outputs.append(v)
+        assert len(node.outputs) == 1
