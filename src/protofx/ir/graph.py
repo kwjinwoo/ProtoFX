@@ -148,12 +148,12 @@ class Graph:
         node = Node(
             id=self._new_node_id(),
             op_type=op_type,
-            inputs=list(inputs),
             domain=domain,
             opset_version=opset_version,
             attributes=attributes if attributes is not None else {},
             name=name,
         )
+        node._inputs = list(inputs)
 
         # Create output Values
         names = output_names or [None] * len(output_types)
@@ -165,11 +165,11 @@ class Graph:
                 name=oname,
             )
             out_value._producer = node
-            node.outputs.append(out_value)
+            node._outputs.append(out_value)
             self._register_value(out_value)
 
         # Wire input users
-        for slot, inp_value in enumerate(node.inputs):
+        for slot, inp_value in enumerate(node._inputs):
             inp_value._users.append((node, slot))
 
         self._register_node(node)
@@ -193,14 +193,14 @@ class Graph:
             new_inputs: New ordered input Values.
         """
         # Step 1: remove old user entries
-        for slot, old_value in enumerate(node.inputs):
+        for slot, old_value in enumerate(node._inputs):
             old_value._users.remove((node, slot))
 
         # Step 2: replace
-        node.inputs = list(new_inputs)
+        node._inputs = list(new_inputs)
 
         # Step 3: add new user entries
-        for slot, new_value in enumerate(node.inputs):
+        for slot, new_value in enumerate(node._inputs):
             new_value._users.append((node, slot))
 
     def set_value_type(self, value: Value, tensor_type: TensorType) -> None:
@@ -239,17 +239,17 @@ class Graph:
             ValueError: If any output Value is still in use.
         """
         # Step 1: fast-fail check
-        for out_value in node.outputs:
+        for out_value in node._outputs:
             if out_value._users:
                 msg = f"cannot remove node {node.id!r}: output {out_value.id!r} is still in use"
                 raise ValueError(msg)
 
         # Step 2: clean input users
-        for slot, inp_value in enumerate(node.inputs):
+        for slot, inp_value in enumerate(node._inputs):
             inp_value._users.remove((node, slot))
 
         # Step 3: unregister output values
-        for out_value in node.outputs:
+        for out_value in node._outputs:
             del self._values[out_value.id]
 
         # Step 4: remove node
@@ -349,7 +349,7 @@ class Graph:
                 if consumer.id not in self._nodes:
                     msg = f"value {value.id!r}: user node {consumer.id!r} not registered in graph"
                     raise ValueError(msg)
-                if slot >= len(consumer.inputs) or consumer.inputs[slot] is not value:
+                if slot >= len(consumer._inputs) or consumer._inputs[slot] is not value:
                     msg = f"value {value.id!r}: user ({consumer.id!r}, slot={slot}) back-reference mismatch"
                     raise ValueError(msg)
 
