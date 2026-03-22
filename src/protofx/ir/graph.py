@@ -163,14 +163,14 @@ class Graph:
                 kind=ValueKind.NODE_OUTPUT,
                 tensor_type=tt,
                 name=oname,
-                producer=node,
             )
+            out_value._producer = node
             node.outputs.append(out_value)
             self._register_value(out_value)
 
         # Wire input users
         for slot, inp_value in enumerate(node.inputs):
-            inp_value.users.append((node, slot))
+            inp_value._users.append((node, slot))
 
         self._register_node(node)
         self.nodes.append(node)
@@ -194,14 +194,14 @@ class Graph:
         """
         # Step 1: remove old user entries
         for slot, old_value in enumerate(node.inputs):
-            old_value.users.remove((node, slot))
+            old_value._users.remove((node, slot))
 
         # Step 2: replace
         node.inputs = list(new_inputs)
 
         # Step 3: add new user entries
         for slot, new_value in enumerate(node.inputs):
-            new_value.users.append((node, slot))
+            new_value._users.append((node, slot))
 
     def set_value_type(self, value: Value, tensor_type: TensorType) -> None:
         """Update the tensor metadata on a ``Value``.
@@ -240,13 +240,13 @@ class Graph:
         """
         # Step 1: fast-fail check
         for out_value in node.outputs:
-            if out_value.users:
+            if out_value._users:
                 msg = f"cannot remove node {node.id!r}: output {out_value.id!r} is still in use"
                 raise ValueError(msg)
 
         # Step 2: clean input users
         for slot, inp_value in enumerate(node.inputs):
-            inp_value.users.remove((node, slot))
+            inp_value._users.remove((node, slot))
 
         # Step 3: unregister output values
         for out_value in node.outputs:
