@@ -85,11 +85,16 @@ The accepted ownership model is:
 - `ir.Graph` owns node membership, value membership, topological order, and structural consistency.
 - `ir.Node` and `ir.Value` are mutable IR entities whose updates happen through graph-aware APIs.
 - `ir.TensorType` is an immutable value object attached to `Value` instances.
+- `Value.producer` and `Value.users` are **read-only properties**. The underlying data (`_producer` and
+  `_users`) is private and may only be written by `ir.Graph` methods. This enforces use-def consistency
+  at the API level rather than relying on caller discipline.
 
 This split is intentional.
 
 - Graph structure is expected to change during import normalization and later analysis or rewrite passes.
 - Tensor metadata behaves like plain value data and is safer to replace than to mutate in place.
+- Producer/user relationships are structural invariants that must stay consistent with `Node.inputs` and
+  `Node.outputs`. Making them read-only on `Value` prevents accidental desynchronization.
 
 ProtoFX therefore does **not** use frozen dataclasses for `Node` and `Value` as an architectural constraint.
 The previous frozen `Node.create()` factory pattern is superseded by graph-managed construction.
