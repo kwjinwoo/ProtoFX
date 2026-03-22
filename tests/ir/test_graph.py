@@ -1,7 +1,5 @@
 """Tests for protofx.ir.Graph — graph-owned mutable IR."""
 
-import pytest
-
 from protofx.ir import DType, TensorType
 from protofx.ir.graph import Graph
 from protofx.ir.value import ValueKind

@@ -7,11 +7,9 @@ relationships must go through ``Graph`` methods.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from protofx.ir.node import Node
-    from protofx.ir.value import Value
+from protofx.ir.node import AttributeValue, Node
+from protofx.ir.tensor_type import TensorType
+from protofx.ir.value import Value, ValueKind
 
 
 class Graph:
@@ -59,3 +57,121 @@ class Graph:
     def node_count(self) -> int:
         """Return the number of registered nodes."""
         return len(self._nodes)
+
+    # ------------------------------------------------------------------
+    # ID generation
+    # ------------------------------------------------------------------
+
+    def _new_value_id(self) -> str:
+        """Generate a unique value id."""
+        vid = f"v{self._next_value_id}"
+        self._next_value_id += 1
+        return vid
+
+    def _new_node_id(self) -> str:
+        """Generate a unique node id."""
+        nid = f"n{self._next_node_id}"
+        self._next_node_id += 1
+        return nid
+
+    # ------------------------------------------------------------------
+    # Registration helpers
+    # ------------------------------------------------------------------
+
+    def _register_value(self, value: Value) -> None:
+        """Register a value in the internal registry.
+
+        Args:
+            value: The Value to register.
+        """
+        self._values[value.id] = value
+
+    def _register_node(self, node: Node) -> None:
+        """Register a node in the internal registry.
+
+        Args:
+            node: The Node to register.
+        """
+        self._nodes[node.id] = node
+
+    # ------------------------------------------------------------------
+    # Construction APIs
+    # ------------------------------------------------------------------
+
+    def add_input(self, *, tensor_type: TensorType, name: str | None = None) -> Value:
+        """Create and register a graph input ``Value``.
+
+        Args:
+            tensor_type: Tensor metadata for the input.
+            name: Optional ONNX source name.
+
+        Returns:
+            The newly created ``GRAPH_INPUT`` Value.
+        """
+        value = Value(
+            id=self._new_value_id(),
+            kind=ValueKind.GRAPH_INPUT,
+            tensor_type=tensor_type,
+            name=name,
+        )
+        self._register_value(value)
+        self.inputs.append(value)
+        return value
+
+    def make_node(
+        self,
+        *,
+        op_type: str,
+        inputs: list[Value],
+        output_types: list[TensorType],
+        domain: str = "",
+        opset_version: int | None = None,
+        attributes: dict[str, AttributeValue] | None = None,
+        name: str | None = None,
+        output_names: list[str | None] | None = None,
+    ) -> Node:
+        """Create a ``Node`` with output ``Value`` instances and wire use-def links.
+
+        Args:
+            op_type: ONNX operator type string.
+            inputs: Ordered input Values.
+            output_types: One ``TensorType`` per output to create.
+            domain: ONNX operator domain. Defaults to ``""``.
+            opset_version: ONNX opset version, or ``None``.
+            attributes: Normalized attribute dict, or ``None`` for empty.
+            name: Optional ONNX node name.
+            output_names: Optional list of ONNX names for output Values.
+
+        Returns:
+            The newly created ``Node`` with outputs populated.
+        """
+        node = Node(
+            id=self._new_node_id(),
+            op_type=op_type,
+            inputs=list(inputs),
+            domain=domain,
+            opset_version=opset_version,
+            attributes=attributes if attributes is not None else {},
+            name=name,
+        )
+
+        # Create output Values
+        names = output_names or [None] * len(output_types)
+        for tt, oname in zip(output_types, names, strict=True):
+            out_value = Value(
+                id=self._new_value_id(),
+                kind=ValueKind.NODE_OUTPUT,
+                tensor_type=tt,
+                name=oname,
+                producer=node,
+            )
+            node.outputs.append(out_value)
+            self._register_value(out_value)
+
+        # Wire input users
+        for slot, inp_value in enumerate(node.inputs):
+            inp_value.users.append((node, slot))
+
+        self._register_node(node)
+        self.nodes.append(node)
+        return node
