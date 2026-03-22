@@ -111,7 +111,7 @@ class TestGraphAddInput:
         """Newly created input has no users."""
         g = Graph()
         v = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        assert v.users == []
+        assert v.users == ()
 
 
 # ---------------------------------------------------------------------------
@@ -585,8 +585,8 @@ class TestGraphValidate:
         g = Graph()
         inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
         n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
-        # Corrupt: set producer to None
-        n1.outputs[0].producer = None
+        # Corrupt: set _producer to None directly (bypassing read-only property)
+        n1.outputs[0]._producer = None
         with pytest.raises(ValueError, match="producer"):
             g.validate()
 
@@ -599,7 +599,7 @@ class TestGraphValidate:
         from protofx.ir.node import Node
 
         fake_node = Node(id="fake", op_type="Fake", inputs=[], outputs=[])
-        n1.outputs[0].users.append((fake_node, 0))
+        n1.outputs[0]._users.append((fake_node, 0))
         with pytest.raises(ValueError, match="user"):
             g.validate()
 

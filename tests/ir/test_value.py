@@ -64,18 +64,20 @@ class TestValueConstruction:
         assert v.tensor_type is tt
         assert v.name is None
         assert v.producer is None
-        assert v.users == []
+        assert v.users == ()
 
-    def test_node_output_with_producer(self) -> None:
-        """Value can be constructed with a producer Node."""
-        node = Node(id="n0", op_type="Identity")
-        v = Value(
-            id="y",
-            kind=ValueKind.NODE_OUTPUT,
-            tensor_type=TensorType(dtype=DType.INT64, shape=(4,)),
-            producer=node,
+    def test_node_output_with_producer_via_graph(self) -> None:
+        """Value produced by a node via Graph.make_node has correct producer."""
+        from protofx.ir.graph import Graph
+
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)))
+        node = g.make_node(
+            op_type="Identity",
+            inputs=[inp],
+            output_types=[TensorType(dtype=DType.INT64, shape=(4,))],
         )
-        assert v.producer is node
+        assert node.outputs[0].producer is node
 
     def test_sentinel_value(self) -> None:
         v = Value(id="s0", kind=ValueKind.SENTINEL, tensor_type=TensorType(dtype=None, shape=None))
@@ -99,8 +101,8 @@ class TestValueConstruction:
     def test_users_default_empty(self) -> None:
         tt = TensorType(dtype=DType.FLOAT32, shape=(2,))
         v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt)
-        assert v.users == []
-        assert isinstance(v.users, list)
+        assert v.users == ()
+        assert isinstance(v.users, tuple)
 
 
 # ---------------------------------------------------------------------------
@@ -137,16 +139,16 @@ class TestValueMutability:
         value.name = "new"
         assert value.name == "new"
 
-    def test_can_set_producer(self, value: Value) -> None:
+    def test_cannot_set_producer(self, value: Value) -> None:
+        """producer is read-only; assignment must raise AttributeError."""
         node = Node(id="n0", op_type="Relu")
-        value.producer = node
-        assert value.producer is node
+        with pytest.raises(AttributeError):
+            value.producer = node  # type: ignore[misc]
 
-    def test_can_append_user(self, value: Value) -> None:
-        node = Node(id="n0", op_type="Relu")
-        value.users.append((node, 0))
-        assert len(value.users) == 1
-        assert value.users[0] == (node, 0)
+    def test_cannot_append_user(self, value: Value) -> None:
+        """users returns a tuple; append must raise AttributeError."""
+        with pytest.raises(AttributeError):
+            value.users.append((Node(id="n0", op_type="Relu"), 0))  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -155,29 +157,35 @@ class TestValueMutability:
 
 
 class TestValueUsersField:
-    """Verify the users field tracks consumer nodes."""
+    """Verify the users property returns a read-only tuple via Graph."""
 
-    def test_users_is_list(self) -> None:
+    def test_users_is_tuple(self) -> None:
         v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        assert isinstance(v.users, list)
+        assert isinstance(v.users, tuple)
 
-    def test_users_stores_node_and_slot(self) -> None:
-        """Each user entry is (Node, input_slot_index)."""
-        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        n1 = Node(id="n0", op_type="Relu")
-        n2 = Node(id="n1", op_type="Sigmoid")
-        v.users.append((n1, 0))
-        v.users.append((n2, 0))
-        assert len(v.users) == 2
+    def test_users_tracks_consumers_via_graph(self) -> None:
+        """Each user entry is (Node, input_slot_index), wired by Graph."""
+        from protofx.ir.graph import Graph
+
+        g = Graph()
+        v = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        n1 = g.make_node(op_type="Relu", inputs=[v], output_types=[TensorType(dtype=DType.FLOAT32, shape=(1,))])
+        n2 = g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(1,))]
+        )
+        assert len(v.users) == 1
         assert v.users[0] == (n1, 0)
-        assert v.users[1] == (n2, 0)
+        assert len(n1.outputs[0].users) == 1
+        assert n1.outputs[0].users[0] == (n2, 0)
 
     def test_users_independent_per_value(self) -> None:
-        """Each Value has its own users list (no shared default)."""
-        v1 = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        v2 = Value(id="v1", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        n = Node(id="n0", op_type="Relu")
-        v1.users.append((n, 0))
+        """Each Value has its own users tuple (no shared default)."""
+        from protofx.ir.graph import Graph
+
+        g = Graph()
+        v1 = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        v2 = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        g.make_node(op_type="Relu", inputs=[v1], output_types=[TensorType(dtype=DType.FLOAT32, shape=(1,))])
         assert len(v1.users) == 1
         assert len(v2.users) == 0
 
