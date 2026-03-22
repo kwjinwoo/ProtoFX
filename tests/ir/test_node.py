@@ -233,3 +233,73 @@ class TestNodeListInterfaces:
         v = Value(id="v0", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
         node.outputs.append(v)
         assert len(node.outputs) == 1
+
+
+# ---------------------------------------------------------------------------
+# Node.inputs / Node.outputs must be read-only, graph-managed properties
+# ---------------------------------------------------------------------------
+
+
+class TestNodeInputsReadOnly:
+    """Node.inputs must be a read-only property returning a tuple snapshot.
+
+    Only ``Graph`` methods may modify the underlying ``_inputs`` list.
+    Direct assignment to ``node.inputs`` must raise ``AttributeError``.
+    """
+
+    def test_inputs_returns_tuple(self) -> None:
+        """node.inputs must return a tuple, not a list."""
+        node = Node(id="n0", op_type="Relu")
+        assert isinstance(node.inputs, tuple)
+
+    def test_inputs_not_settable(self) -> None:
+        """Assigning to node.inputs must raise AttributeError."""
+        node = Node(id="n0", op_type="Relu")
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        with pytest.raises(AttributeError):
+            node.inputs = [v]  # type: ignore[misc]
+
+    def test_inputs_default_empty_tuple(self) -> None:
+        """A freshly created Node has empty inputs tuple."""
+        node = Node(id="n0", op_type="Relu")
+        assert node.inputs == ()
+
+    def test_inputs_snapshot_is_independent(self) -> None:
+        """Mutating the returned tuple must not affect the node's internal state."""
+        node = Node(id="n0", op_type="Relu")
+        snapshot = node.inputs
+        assert snapshot == ()
+        # tuple is immutable, so no mutation is possible — this just confirms the type
+        assert isinstance(snapshot, tuple)
+
+
+class TestNodeOutputsReadOnly:
+    """Node.outputs must be a read-only property returning a tuple snapshot.
+
+    Only ``Graph`` methods may modify the underlying ``_outputs`` list.
+    Direct assignment to ``node.outputs`` must raise ``AttributeError``.
+    """
+
+    def test_outputs_returns_tuple(self) -> None:
+        """node.outputs must return a tuple, not a list."""
+        node = Node(id="n0", op_type="Relu")
+        assert isinstance(node.outputs, tuple)
+
+    def test_outputs_not_settable(self) -> None:
+        """Assigning to node.outputs must raise AttributeError."""
+        node = Node(id="n0", op_type="Relu")
+        v = Value(id="v0", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        with pytest.raises(AttributeError):
+            node.outputs = [v]  # type: ignore[misc]
+
+    def test_outputs_default_empty_tuple(self) -> None:
+        """A freshly created Node has empty outputs tuple."""
+        node = Node(id="n0", op_type="Relu")
+        assert node.outputs == ()
+
+    def test_outputs_snapshot_is_independent(self) -> None:
+        """Mutating the returned tuple must not affect the node's internal state."""
+        node = Node(id="n0", op_type="Relu")
+        snapshot = node.outputs
+        assert snapshot == ()
+        assert isinstance(snapshot, tuple)
