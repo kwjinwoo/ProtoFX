@@ -53,20 +53,34 @@ class Value:
     All structural mutations (producer/user rewiring) must go through
     ``Graph`` methods to maintain use-def consistency.
 
+    The ``producer`` and ``users`` relationships are graph-managed internals.
+    They are exposed as read-only properties; only ``Graph`` may modify them
+    via the private ``_producer`` and ``_users`` attributes.
+
     Attributes:
         id: Stable internal identifier. Assigned by the graph owner.
         kind: Classification of this value's origin.
         tensor_type: Tensor metadata (dtype and shape).
         name: Original ONNX name preserved as source metadata, or ``None``.
-        producer: The IR ``Node`` that produces this value, or ``None`` for
-            graph inputs and sentinel values.
-        users: List of ``(node, input_slot_index)`` tuples tracking every
-            consumer of this value. Maintained by ``Graph``.
+        producer: (read-only) The IR ``Node`` that produces this value, or
+            ``None`` for graph inputs and sentinel values.
+        users: (read-only) Tuple of ``(node, input_slot_index)`` pairs
+            tracking every consumer of this value.
     """
 
     id: str
     kind: ValueKind
     tensor_type: TensorType
     name: str | None = None
-    producer: Node | None = None
-    users: list[tuple[Node, int]] = field(default_factory=list)
+    _producer: Node | None = field(default=None, init=False, repr=False)
+    _users: list[tuple[Node, int]] = field(default_factory=list, init=False, repr=False)
+
+    @property
+    def producer(self) -> Node | None:
+        """Return the producer node, or ``None`` for graph inputs / sentinels."""
+        return self._producer
+
+    @property
+    def users(self) -> tuple[tuple[Node, int], ...]:
+        """Return an immutable snapshot of this value's consumers."""
+        return tuple(self._users)
