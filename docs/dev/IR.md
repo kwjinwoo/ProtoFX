@@ -307,8 +307,8 @@ The expected field shape is:
 | `kind` | `ValueKind` | — | Origin classification (see below) |
 | `tensor_type` | `TensorType` | — | Tensor metadata (dtype + shape) |
 | `name` | `str \| None` | `None` | Original ONNX name preserved as source metadata |
-| `producer` | `Node \| None` | `None` | Convenience view of the producing node |
-| `users` | `tuple[Node, ...]` or graph-backed view | `()` | Convenience view of consuming nodes |
+| `producer` | `Node \| None` | `None` | Producing node, managed by Graph |
+| `users` | `list[tuple[Node, int]]` | `[]` | Consumer (node, slot) pairs, managed by Graph |
 
 `ir.ValueKind` is an `enum.Enum` with `auto()` values:
 
@@ -324,7 +324,7 @@ update producer links, user links, names, and tensor metadata without replacing 
 `tensor_type` updates should still prefer replacement of the `TensorType` instance rather than in-place
 mutation of tensor metadata internals.
 
-**Identity**: `id` uniqueness is not enforced by `Value` itself. The graph owner (future `ir.Graph`) is
+**Identity**: `id` uniqueness is not enforced by `Value` itself. The graph owner (`ir.Graph`) is
 responsible for ensuring all `Value` ids are unique within a graph.
 
 **Kind comparison**: callers compare kinds directly (`value.kind == ValueKind.SENTINEL`) rather than using
@@ -343,8 +343,8 @@ The expected field shape is:
 |-------|------|---------|-------------|
 | `id` | `str` | — | Stable internal identifier, assigned externally by the graph owner |
 | `op_type` | `str` | — | ONNX operator type (e.g. `"Relu"`, `"Conv"`) |
-| `inputs` | `tuple[Value, ...]` or graph-backed view | — | Ordered input `Value` references preserving ONNX positional order |
-| `outputs` | `tuple[Value, ...]` or graph-backed view | `()` | Ordered output `Value` references, one per operator output |
+| `inputs` | `list[Value]` | — | Ordered input `Value` references preserving ONNX positional order |
+| `outputs` | `list[Value]` | `[]` | Ordered output `Value` references, one per operator output |
 | `domain` | `str` | `""` | ONNX operator domain (empty string = default domain) |
 | `opset_version` | `int \| None` | `None` | ONNX opset version for this node |
 | `attributes` | `dict[str, AttributeValue]` | `{}` | Normalized Python-native attributes |
@@ -362,11 +362,55 @@ maintains use-def consistency as one graph-level operation.
 This replaces the earlier frozen `Node.create()` factory pattern. Graph-aware construction is preferred because
 ProtoFX expects normalization and transform passes to edit graph structure after import.
 
-**Identity**: like `Value`, `id` uniqueness is not enforced by `Node` itself. The graph owner (future
-`ir.Graph`) is responsible for ensuring all `Node` ids are unique within a graph.
+**Identity**: like `Value`, `id` uniqueness is not enforced by `Node` itself. The graph owner (`ir.Graph`)
+is responsible for ensuring all `Node` ids are unique within a graph.
 
 Normalization may unify how their values are accessed, but the graph boundary contract must preserve which
 values are runtime inputs and which are statically bound constants.
+
+### Graph
+
+`ir.Graph` (`src/protofx/ir/graph.py`) is the structural owner of all `Node` and `Value` instances.
+
+**Construction**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str \| None` | `None` | Optional graph name for diagnostics |
+| `parent` | `Graph \| None` | `None` | Reserved for future subgraph support |
+
+**State**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `inputs` | `list[Value]` | Ordered graph input values |
+| `outputs` | `list[Value]` | Ordered graph output values |
+| `nodes` | `list[Node]` | Nodes in insertion order |
+
+Internal registries (`_values`, `_nodes`) and auto-ID counters (`_next_value_id`, `_next_node_id`) are private.
+
+**Construction APIs**:
+
+- `add_input(tensor_type, *, name=None)` — create a `GRAPH_INPUT` value, register it, and append to `inputs`.
+- `make_node(op_type, inputs, output_types, *, domain="", opset_version=None, attributes=None, name=None)` —
+  create a `Node` with `NODE_OUTPUT` values, wire producer and user links, and register everything.
+
+**Mutation APIs** (all mutations go through `Graph` to maintain use-def consistency):
+
+- `set_node_inputs(node, new_inputs)` — atomically rewire: (1) remove old users, (2) replace `node.inputs`,
+  (3) add new users.
+- `set_value_type(value, tensor_type)` — update tensor metadata on a value.
+- `set_graph_outputs(outputs)` — replace the graph output list.
+- `remove_node(node)` — fast-fail with `ValueError` if any output value has consumers; otherwise clean up
+  users, unregister values, and remove from node list.
+
+**Analysis APIs**:
+
+- `topological_sort()` — return nodes in topological order using Kahn's algorithm. Raises `ValueError` on cycle.
+- `validate()` — check all IR invariants: producer back-references, input registration, use-def consistency,
+  and acyclicity.
+
+**ID generation**: Graph auto-generates IDs: `v0, v1, ...` for values, `n0, n1, ...` for nodes.
 
 ### 16. Control-Flow Readiness Without Early Over-Commitment
 
