@@ -88,6 +88,9 @@ The accepted ownership model is:
 - `Value.producer` and `Value.users` are **read-only properties**. The underlying data (`_producer` and
   `_users`) is private and may only be written by `ir.Graph` methods. This enforces use-def consistency
   at the API level rather than relying on caller discipline.
+- `Node.inputs` and `Node.outputs` are **read-only properties** returning tuple snapshots. The underlying
+  data (`_inputs` and `_outputs`) is private and may only be written by `ir.Graph` methods. This prevents
+  external code from bypassing graph-managed use-def wiring.
 
 This split is intentional.
 
@@ -95,6 +98,9 @@ This split is intentional.
 - Tensor metadata behaves like plain value data and is safer to replace than to mutate in place.
 - Producer/user relationships are structural invariants that must stay consistent with `Node.inputs` and
   `Node.outputs`. Making them read-only on `Value` prevents accidental desynchronization.
+- Input/output relationships on `Node` are structural invariants that must stay consistent with
+  `Value.producer` and `Value.users`. Making them read-only tuple snapshots on `Node` ensures all
+  rewiring goes through `ir.Graph` mutation APIs.
 
 ProtoFX therefore does **not** use frozen dataclasses for `Node` and `Value` as an architectural constraint.
 The previous frozen `Node.create()` factory pattern is superseded by graph-managed construction.
