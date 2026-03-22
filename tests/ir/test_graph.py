@@ -274,3 +274,197 @@ class TestGraphMakeNode:
             output_names=["relu_out"],
         )
         assert node.outputs[0].name == "relu_out"
+
+
+# ---------------------------------------------------------------------------
+# Graph.set_node_inputs — atomic input rewiring
+# ---------------------------------------------------------------------------
+
+
+class TestGraphSetNodeInputs:
+    """Verify set_node_inputs atomically rewires use-def links.
+
+    Atomic order:
+    1. Remove old users entries from old input Values.
+    2. Replace node.inputs.
+    3. Add new users entries to new input Values.
+    """
+
+    def test_basic_rewire(self) -> None:
+        """Replace single input — old users cleared, new users added."""
+        g = Graph()
+        a = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        b = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[a], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.set_node_inputs(node, [b])
+        assert node.inputs == [b]
+        assert len(a.users) == 0
+        assert b.users[0] == (node, 0)
+
+    def test_multi_input_rewire(self) -> None:
+        """Replace both inputs of a binary op."""
+        g = Graph()
+        a = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        b = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        c = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        d = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Add", inputs=[a, b], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.set_node_inputs(node, [c, d])
+        assert len(a.users) == 0
+        assert len(b.users) == 0
+        assert c.users[0] == (node, 0)
+        assert d.users[0] == (node, 1)
+
+    def test_rewire_preserves_other_users(self) -> None:
+        """Rewiring one node does not affect another node using the same value."""
+        g = Graph()
+        a = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        b = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[a], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n2 = g.make_node(op_type="Sigmoid", inputs=[a], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.set_node_inputs(n1, [b])
+        # n2 still uses a
+        assert any(u[0] is n2 for u in a.users)
+        assert not any(u[0] is n1 for u in a.users)
+
+    def test_same_value_multiple_slots(self) -> None:
+        """A value used in multiple input slots gets entries for each."""
+        g = Graph()
+        a = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Add", inputs=[a, a], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        assert len(a.users) == 2
+        g.set_node_inputs(node, [a])
+        assert len(a.users) == 1
+        assert a.users[0] == (node, 0)
+
+
+# ---------------------------------------------------------------------------
+# Graph.set_value_type — update tensor metadata
+# ---------------------------------------------------------------------------
+
+
+class TestGraphSetValueType:
+    """Verify set_value_type updates tensor metadata on a Value."""
+
+    def test_update_tensor_type(self) -> None:
+        """Tensor type is replaced."""
+        g = Graph()
+        v = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)))
+        new_tt = TensorType(dtype=DType.FLOAT16, shape=(2, 3))
+        g.set_value_type(v, new_tt)
+        assert v.tensor_type is new_tt
+
+    def test_original_unchanged_reference(self) -> None:
+        """The original TensorType object is not mutated."""
+        g = Graph()
+        original_tt = TensorType(dtype=DType.FLOAT32, shape=(2,))
+        v = g.add_input(tensor_type=original_tt)
+        new_tt = TensorType(dtype=DType.INT64, shape=(2,))
+        g.set_value_type(v, new_tt)
+        assert original_tt.dtype == DType.FLOAT32
+
+
+# ---------------------------------------------------------------------------
+# Graph.set_graph_outputs
+# ---------------------------------------------------------------------------
+
+
+class TestGraphSetGraphOutputs:
+    """Verify set_graph_outputs sets graph.outputs properly."""
+
+    def test_set_outputs(self) -> None:
+        """Graph outputs are set to the provided values."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.set_graph_outputs([node.outputs[0]])
+        assert g.outputs == [node.outputs[0]]
+
+    def test_set_multiple_outputs(self) -> None:
+        """Multiple outputs can be set."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(10,)))
+        node = g.make_node(
+            op_type="Split",
+            inputs=[inp],
+            output_types=[
+                TensorType(dtype=DType.FLOAT32, shape=(5,)),
+                TensorType(dtype=DType.FLOAT32, shape=(5,)),
+            ],
+        )
+        g.set_graph_outputs([node.outputs[0], node.outputs[1]])
+        assert len(g.outputs) == 2
+
+    def test_replace_outputs(self) -> None:
+        """Setting outputs replaces previous outputs."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n2 = g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        g.set_graph_outputs([n1.outputs[0]])
+        assert g.outputs == [n1.outputs[0]]
+        g.set_graph_outputs([n2.outputs[0]])
+        assert g.outputs == [n2.outputs[0]]
+
+
+# ---------------------------------------------------------------------------
+# Graph.remove_node — fast-fail if outputs in use
+# ---------------------------------------------------------------------------
+
+
+class TestGraphRemoveNode:
+    """Verify remove_node deletes a node and cleans up use-def links."""
+
+    def test_remove_unused_node(self) -> None:
+        """Remove a node whose outputs have no consumers."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.remove_node(node)
+        assert node not in g.nodes
+        assert g.node_count == 0
+
+    def test_remove_cleans_input_users(self) -> None:
+        """Removing a node clears its entries from input Value users."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.remove_node(node)
+        assert len(inp.users) == 0
+
+    def test_remove_unregisters_output_values(self) -> None:
+        """Removing a node unregisters its output Values from the graph."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        assert g.value_count == 2
+        g.remove_node(g.nodes[0])
+        assert g.value_count == 1
+
+    def test_remove_refuses_if_output_in_use(self) -> None:
+        """remove_node raises ValueError if any output has consumers."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        with pytest.raises(ValueError, match="in use"):
+            g.remove_node(n1)
+
+    def test_remove_refuses_preserves_state(self) -> None:
+        """After a refused removal, the graph is unchanged."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        try:
+            g.remove_node(n1)
+        except ValueError:
+            pass
+        assert n1 in g.nodes
+        assert g.node_count == 2
