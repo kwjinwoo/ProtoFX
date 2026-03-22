@@ -1,8 +1,7 @@
 """Node and AttributeValue for ProtoFX IR operation representation.
 
 ``Node`` represents one normalized ONNX operation in the IR graph. It is
-a frozen dataclass whose output ``Value`` instances are constructed
-atomically via the ``Node.create()`` factory classmethod.
+a mutable dataclass whose lifecycle is managed by ``ir.Graph``.
 
 ``AttributeValue`` is a type alias for normalized ONNX attribute values.
 """
@@ -13,8 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from protofx.ir.tensor_type import TensorType
-    from protofx.ir.value import Value, ValueKind
+    from protofx.ir.value import Value
 
 type AttributeValue = int | float | str | bytes | list[int] | list[float] | list[str] | list[bytes]
 """Normalized ONNX attribute value type.
@@ -24,13 +22,13 @@ The emitter must not depend on raw ``onnx.AttributeProto`` structures.
 """
 
 
-@dataclass(frozen=True)
+@dataclass
 class Node:
-    """Immutable IR node representing one normalized ONNX operation.
+    """Mutable IR node representing one normalized ONNX operation.
 
-    ``Node`` is frozen. Construction requires the ``create()`` classmethod
-    which atomically builds the node and its output ``Value`` instances,
-    resolving the circular ``Node ↔ Value`` reference.
+    ``Node`` is mutable and its lifecycle is owned by ``ir.Graph``.
+    All structural mutations (input/output rewiring, creation, deletion)
+    must go through ``Graph`` methods to maintain use-def consistency.
 
     Attributes:
         id: Stable internal identifier assigned by the graph owner.
@@ -45,65 +43,9 @@ class Node:
 
     id: str
     op_type: str
-    inputs: tuple[Value, ...]
-    outputs: tuple[Value, ...] = field(default=())
+    inputs: list[Value] = field(default_factory=list)
+    outputs: list[Value] = field(default_factory=list)
     domain: str = ""
     opset_version: int | None = None
     attributes: dict[str, AttributeValue] = field(default_factory=dict)
     name: str | None = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        id: str,
-        op_type: str,
-        inputs: tuple[Value, ...],
-        output_specs: tuple[tuple[str, ValueKind, TensorType, str | None], ...],
-        domain: str = "",
-        opset_version: int | None = None,
-        attributes: dict[str, AttributeValue] | None = None,
-        name: str | None = None,
-    ) -> tuple[Node, tuple[Value, ...]]:
-        """Atomically create a ``Node`` and its output ``Value`` instances.
-
-        This factory resolves the circular reference between ``Node.outputs``
-        and ``Value.producer`` by using ``object.__setattr__`` to set the
-        ``outputs`` field on the frozen node after initial construction.
-
-        Args:
-            id: Stable internal identifier for the node.
-            op_type: ONNX operator type string.
-            inputs: Ordered tuple of input ``Value`` references.
-            output_specs: Tuple of ``(id, kind, tensor_type, name)`` specs,
-                one per output. Each spec is used to construct a ``Value``
-                whose ``producer`` points back to this node.
-            domain: ONNX operator domain. Defaults to ``""``.
-            opset_version: ONNX opset version, or ``None``.
-            attributes: Normalized attribute dict, or ``None`` for empty.
-            name: Original ONNX node name, or ``None``.
-
-        Returns:
-            A ``(node, outputs)`` tuple where each output ``Value`` has
-            ``producer`` set to the returned node.
-        """
-        from protofx.ir.value import Value
-
-        node = cls(
-            id=id,
-            op_type=op_type,
-            inputs=inputs,
-            domain=domain,
-            opset_version=opset_version,
-            attributes=attributes if attributes is not None else {},
-            name=name,
-        )
-
-        outputs = tuple(
-            Value(id=spec[0], kind=spec[1], tensor_type=spec[2], name=spec[3], producer=node) for spec in output_specs
-        )
-
-        # Bypass frozen restriction to set outputs after Value construction.
-        object.__setattr__(node, "outputs", outputs)
-
-        return node, outputs

@@ -7,10 +7,15 @@ as a ``Value`` instance.
 ``ValueKind`` classifies the origin of each ``Value``.
 """
 
-import enum
-from dataclasses import dataclass
+from __future__ import annotations
 
-from protofx.ir.node import Node
+import enum
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from protofx.ir.node import Node
+
 from protofx.ir.tensor_type import TensorType
 
 
@@ -37,24 +42,26 @@ class ValueKind(enum.Enum):
     INITIALIZER = enum.auto()
 
 
-@dataclass(frozen=True)
+@dataclass
 class Value:
-    """Immutable data-flow unit in the IR graph.
+    """Mutable data-flow unit in the IR graph.
 
     All data-flow — graph inputs, node outputs, constants, initializers, and
     omitted optional inputs — is represented as a ``Value``.
 
-    ``Value`` is frozen. To update metadata such as ``tensor_type`` or
-    ``name``, use ``dataclasses.replace()`` to produce a new instance.
+    ``Value`` is mutable and its lifecycle is owned by ``ir.Graph``.
+    All structural mutations (producer/user rewiring) must go through
+    ``Graph`` methods to maintain use-def consistency.
 
     Attributes:
-        id: Stable internal identifier. Assigned externally; uniqueness is
-            enforced by the graph owner, not by ``Value`` itself.
+        id: Stable internal identifier. Assigned by the graph owner.
         kind: Classification of this value's origin.
         tensor_type: Tensor metadata (dtype and shape).
         name: Original ONNX name preserved as source metadata, or ``None``.
         producer: The IR ``Node`` that produces this value, or ``None`` for
             graph inputs and sentinel values.
+        users: List of ``(node, input_slot_index)`` tuples tracking every
+            consumer of this value. Maintained by ``Graph``.
     """
 
     id: str
@@ -62,3 +69,4 @@ class Value:
     tensor_type: TensorType
     name: str | None = None
     producer: Node | None = None
+    users: list[tuple[Node, int]] = field(default_factory=list)

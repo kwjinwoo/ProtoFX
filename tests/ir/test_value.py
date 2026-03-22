@@ -1,6 +1,5 @@
-"""Tests for protofx.ir.Value and protofx.ir.ValueKind."""
+"""Tests for protofx.ir.Value and protofx.ir.ValueKind -- mutable Value."""
 
-import dataclasses
 import enum
 
 import pytest
@@ -65,16 +64,18 @@ class TestValueConstruction:
         assert v.tensor_type is tt
         assert v.name is None
         assert v.producer is None
+        assert v.users == []
 
     def test_node_output_with_producer(self) -> None:
-        input_val = Value(id="in0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.INT64, shape=(4,)))
-        node, outputs = Node.create(
-            id="n0",
-            op_type="Identity",
-            inputs=(input_val,),
-            output_specs=(("y", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.INT64, shape=(4,)), None),),
+        """Value can be constructed with a producer Node."""
+        node = Node(id="n0", op_type="Identity")
+        v = Value(
+            id="y",
+            kind=ValueKind.NODE_OUTPUT,
+            tensor_type=TensorType(dtype=DType.INT64, shape=(4,)),
+            producer=node,
         )
-        assert outputs[0].producer is node
+        assert v.producer is node
 
     def test_sentinel_value(self) -> None:
         v = Value(id="s0", kind=ValueKind.SENTINEL, tensor_type=TensorType(dtype=None, shape=None))
@@ -95,14 +96,20 @@ class TestValueConstruction:
         v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt, name="input_0")
         assert v.name == "input_0"
 
+    def test_users_default_empty(self) -> None:
+        tt = TensorType(dtype=DType.FLOAT32, shape=(2,))
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt)
+        assert v.users == []
+        assert isinstance(v.users, list)
+
 
 # ---------------------------------------------------------------------------
-# Value immutability
+# Value mutability
 # ---------------------------------------------------------------------------
 
 
-class TestValueImmutability:
-    """Value must be frozen (immutable)."""
+class TestValueMutability:
+    """Value must be mutable -- Graph owns structural mutations."""
 
     @pytest.fixture()
     def value(self) -> Value:
@@ -113,75 +120,63 @@ class TestValueImmutability:
             tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)),
         )
 
-    def test_cannot_set_id(self, value: Value) -> None:
-        with pytest.raises(AttributeError):
-            value.id = "other"  # type: ignore[misc]
+    def test_can_set_id(self, value: Value) -> None:
+        value.id = "v99"
+        assert value.id == "v99"
 
-    def test_cannot_set_kind(self, value: Value) -> None:
-        with pytest.raises(AttributeError):
-            value.kind = ValueKind.SENTINEL  # type: ignore[misc]
+    def test_can_set_kind(self, value: Value) -> None:
+        value.kind = ValueKind.SENTINEL
+        assert value.kind == ValueKind.SENTINEL
 
-    def test_cannot_set_tensor_type(self, value: Value) -> None:
-        with pytest.raises(AttributeError):
-            value.tensor_type = TensorType(dtype=None, shape=None)  # type: ignore[misc]
+    def test_can_set_tensor_type(self, value: Value) -> None:
+        new_tt = TensorType(dtype=None, shape=None)
+        value.tensor_type = new_tt
+        assert value.tensor_type is new_tt
 
-    def test_cannot_set_name(self, value: Value) -> None:
-        with pytest.raises(AttributeError):
-            value.name = "new"  # type: ignore[misc]
+    def test_can_set_name(self, value: Value) -> None:
+        value.name = "new"
+        assert value.name == "new"
 
-    def test_cannot_set_producer(self, value: Value) -> None:
-        input_val = Value(id="in0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        node, _ = Node.create(
-            id="n0",
-            op_type="Relu",
-            inputs=(input_val,),
-            output_specs=(("o0", ValueKind.NODE_OUTPUT, TensorType(dtype=DType.FLOAT32, shape=(1,)), None),),
-        )
-        with pytest.raises(AttributeError):
-            value.producer = node  # type: ignore[misc]
+    def test_can_set_producer(self, value: Value) -> None:
+        node = Node(id="n0", op_type="Relu")
+        value.producer = node
+        assert value.producer is node
+
+    def test_can_append_user(self, value: Value) -> None:
+        node = Node(id="n0", op_type="Relu")
+        value.users.append((node, 0))
+        assert len(value.users) == 1
+        assert value.users[0] == (node, 0)
 
 
 # ---------------------------------------------------------------------------
-# Value replacement (dataclasses.replace)
+# Value users field
 # ---------------------------------------------------------------------------
 
 
-class TestValueReplacement:
-    """Verify dataclasses.replace produces a new Value without mutating the original."""
+class TestValueUsersField:
+    """Verify the users field tracks consumer nodes."""
 
-    def test_replace_tensor_type(self) -> None:
-        original_tt = TensorType(dtype=DType.FLOAT32, shape=(2, 3))
-        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=original_tt)
-        new_tt = TensorType(dtype=DType.FLOAT16, shape=(2, 3))
-        v2 = dataclasses.replace(v, tensor_type=new_tt)
-        assert v2.tensor_type is new_tt
-        assert v.tensor_type is original_tt  # original unchanged
+    def test_users_is_list(self) -> None:
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        assert isinstance(v.users, list)
 
-    def test_replace_name(self) -> None:
-        tt = TensorType(dtype=DType.FLOAT32, shape=(1,))
-        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt)
-        v2 = dataclasses.replace(v, name="renamed")
-        assert v2.name == "renamed"
-        assert v.name is None
+    def test_users_stores_node_and_slot(self) -> None:
+        """Each user entry is (Node, input_slot_index)."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        n1 = Node(id="n0", op_type="Relu")
+        n2 = Node(id="n1", op_type="Sigmoid")
+        v.users.append((n1, 0))
+        v.users.append((n2, 0))
+        assert len(v.users) == 2
+        assert v.users[0] == (n1, 0)
+        assert v.users[1] == (n2, 0)
 
-    def test_replace_returns_new_instance(self) -> None:
-        tt = TensorType(dtype=DType.FLOAT32, shape=(2,))
-        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt)
-        v2 = dataclasses.replace(v, name="new")
-        assert v is not v2
-
-    def test_replace_preserves_other_fields(self) -> None:
-        tt = TensorType(dtype=DType.INT64, shape=(4,))
-        input_val = Value(id="in0", kind=ValueKind.GRAPH_INPUT, tensor_type=tt)
-        node, outputs = Node.create(
-            id="n0",
-            op_type="Identity",
-            inputs=(input_val,),
-            output_specs=(("v0", ValueKind.NODE_OUTPUT, tt, "out"),),
-        )
-        v = outputs[0]
-        v2 = dataclasses.replace(v, name="renamed")
-        assert v2.id == "v0"
-        assert v2.kind == ValueKind.NODE_OUTPUT
-        assert v2.tensor_type is tt
-        assert v2.producer is node
+    def test_users_independent_per_value(self) -> None:
+        """Each Value has its own users list (no shared default)."""
+        v1 = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        v2 = Value(id="v1", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        n = Node(id="n0", op_type="Relu")
+        v1.users.append((n, 0))
+        assert len(v1.users) == 1
+        assert len(v2.users) == 0
