@@ -216,7 +216,7 @@ class TestGraphMakeNode:
         g = Graph()
         inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
         node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
-        assert node.inputs == [inp]
+        assert node.inputs == (inp,)
 
     def test_chained_nodes(self) -> None:
         """Output of one node can be input to another; use-def chain."""
@@ -299,7 +299,7 @@ class TestGraphSetNodeInputs:
         b = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
         node = g.make_node(op_type="Relu", inputs=[a], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
         g.set_node_inputs(node, [b])
-        assert node.inputs == [b]
+        assert node.inputs == (b,)
         assert len(a.users) == 0
         assert b.users[0] == (node, 0)
 
@@ -598,7 +598,7 @@ class TestGraphValidate:
         # Corrupt: add a fake user entry
         from protofx.ir.node import Node
 
-        fake_node = Node(id="fake", op_type="Fake", inputs=[], outputs=[])
+        fake_node = Node(id="fake", op_type="Fake")
         n1.outputs[0]._users.append((fake_node, 0))
         with pytest.raises(ValueError, match="user"):
             g.validate()
@@ -612,7 +612,7 @@ class TestGraphValidate:
         from protofx.ir.value import Value
 
         rogue = Value(id="rogue", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
-        n1.inputs[0] = rogue
+        n1._inputs[0] = rogue
         with pytest.raises(ValueError, match="not registered"):
             g.validate()
 

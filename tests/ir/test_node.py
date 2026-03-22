@@ -96,11 +96,11 @@ class TestNodeFields:
 
     def test_has_inputs_field(self) -> None:
         fields = {f.name for f in dataclasses.fields(Node)}
-        assert "inputs" in fields
+        assert "_inputs" in fields
 
     def test_has_outputs_field(self) -> None:
         fields = {f.name for f in dataclasses.fields(Node)}
-        assert "outputs" in fields
+        assert "_outputs" in fields
 
     def test_has_attributes_field(self) -> None:
         fields = {f.name for f in dataclasses.fields(Node)}
@@ -132,16 +132,6 @@ class TestNodeMutability:
         node.op_type = "Sigmoid"
         assert node.op_type == "Sigmoid"
 
-    def test_can_set_inputs(self, node: Node) -> None:
-        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
-        node.inputs = [v]
-        assert node.inputs == [v]
-
-    def test_can_set_outputs(self, node: Node) -> None:
-        v = Value(id="v1", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
-        node.outputs = [v]
-        assert node.outputs == [v]
-
     def test_can_set_attributes(self, node: Node) -> None:
         node.attributes = {"kernel_shape": [3, 3]}
         assert node.attributes == {"kernel_shape": [3, 3]}
@@ -167,13 +157,13 @@ class TestNodeMutability:
 class TestNodeDefaults:
     """Verify default values for optional Node fields."""
 
-    def test_inputs_default_empty_list(self) -> None:
+    def test_inputs_default_empty_tuple(self) -> None:
         node = Node(id="n0", op_type="Relu")
-        assert node.inputs == []
+        assert node.inputs == ()
 
-    def test_outputs_default_empty_list(self) -> None:
+    def test_outputs_default_empty_tuple(self) -> None:
         node = Node(id="n0", op_type="Relu")
-        assert node.outputs == []
+        assert node.outputs == ()
 
     def test_domain_default_empty_string(self) -> None:
         node = Node(id="n0", op_type="Relu")
@@ -202,37 +192,6 @@ class TestNodeCreateRemoved:
 
     def test_no_create_classmethod(self) -> None:
         assert not hasattr(Node, "create"), "Node.create() should be removed; Graph owns node construction"
-
-
-# ---------------------------------------------------------------------------
-# Node inputs/outputs are lists (not tuples)
-# ---------------------------------------------------------------------------
-
-
-class TestNodeListInterfaces:
-    """Node.inputs and Node.outputs must be list, not tuple."""
-
-    def test_inputs_is_list(self) -> None:
-        node = Node(id="n0", op_type="Relu")
-        assert isinstance(node.inputs, list)
-
-    def test_outputs_is_list(self) -> None:
-        node = Node(id="n0", op_type="Relu")
-        assert isinstance(node.outputs, list)
-
-    def test_inputs_appendable(self) -> None:
-        """Inputs list supports append (mutable)."""
-        node = Node(id="n0", op_type="Relu")
-        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        node.inputs.append(v)
-        assert len(node.inputs) == 1
-
-    def test_outputs_appendable(self) -> None:
-        """Outputs list supports append (mutable)."""
-        node = Node(id="n0", op_type="Relu")
-        v = Value(id="v0", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
-        node.outputs.append(v)
-        assert len(node.outputs) == 1
 
 
 # ---------------------------------------------------------------------------
