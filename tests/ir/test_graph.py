@@ -470,3 +470,95 @@ class TestGraphRemoveNode:
             pass
         assert n1 in g.nodes
         assert g.node_count == 2
+
+
+class TestGraphTopologicalSort:
+    """Tests for Graph.topological_sort — Kahn's algorithm & cycle detection."""
+
+    def test_empty_graph(self) -> None:
+        """Topological sort on an empty graph returns an empty list."""
+        g = Graph()
+        assert g.topological_sort() == []
+
+    def test_single_node(self) -> None:
+        """Single-node graph returns that node."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        result = g.topological_sort()
+        assert result == [n1]
+
+    def test_linear_chain(self) -> None:
+        """Linear chain: A -> B -> C returns [A, B, C]."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n2 = g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        n3 = g.make_node(
+            op_type="Tanh", inputs=[n2.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        result = g.topological_sort()
+        assert result == [n1, n2, n3]
+
+    def test_diamond_dag(self) -> None:
+        """Diamond DAG: predecessors appear before dependents."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n2 = g.make_node(op_type="Sigmoid", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n3 = g.make_node(
+            op_type="Add",
+            inputs=[n1.outputs[0], n2.outputs[0]],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        result = g.topological_sort()
+        # n3 must come after both n1 and n2
+        assert result.index(n3) > result.index(n1)
+        assert result.index(n3) > result.index(n2)
+        assert len(result) == 3
+
+    def test_returns_new_list(self) -> None:
+        """topological_sort returns a freshly allocated list, not graph.nodes."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        result = g.topological_sort()
+        assert result is not g.nodes
+
+    def test_cycle_detection_raises(self) -> None:
+        """A graph with a cycle in Node inputs raises ValueError."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n2 = g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        # Force a cycle: make n1 depend on n2's output
+        g.set_node_inputs(n1, [n2.outputs[0]])
+        with pytest.raises(ValueError, match="cycle"):
+            g.topological_sort()
+
+    def test_multi_output_node_ordering(self) -> None:
+        """Node with multiple outputs: dependents come after the producer."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)))
+        n_split = g.make_node(
+            op_type="Split",
+            inputs=[inp],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,)), TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        n_a = g.make_node(
+            op_type="Relu",
+            inputs=[n_split.outputs[0]],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        n_b = g.make_node(
+            op_type="Sigmoid",
+            inputs=[n_split.outputs[1]],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        result = g.topological_sort()
+        assert result.index(n_split) < result.index(n_a)
+        assert result.index(n_split) < result.index(n_b)
