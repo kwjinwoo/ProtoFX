@@ -175,3 +175,83 @@ class Graph:
         self._register_node(node)
         self.nodes.append(node)
         return node
+
+    # ------------------------------------------------------------------
+    # Mutation APIs
+    # ------------------------------------------------------------------
+
+    def set_node_inputs(self, node: Node, new_inputs: list[Value]) -> None:
+        """Atomically rewire a node's inputs, maintaining use-def consistency.
+
+        Atomic replacement order:
+        1. Remove this node's entries from old input Value.users.
+        2. Replace node.inputs with *new_inputs*.
+        3. Add ``(node, slot)`` entries to each new input Value.users.
+
+        Args:
+            node: The node whose inputs are being replaced.
+            new_inputs: New ordered input Values.
+        """
+        # Step 1: remove old user entries
+        for slot, old_value in enumerate(node.inputs):
+            old_value.users.remove((node, slot))
+
+        # Step 2: replace
+        node.inputs = list(new_inputs)
+
+        # Step 3: add new user entries
+        for slot, new_value in enumerate(node.inputs):
+            new_value.users.append((node, slot))
+
+    def set_value_type(self, value: Value, tensor_type: TensorType) -> None:
+        """Update the tensor metadata on a ``Value``.
+
+        Args:
+            value: The value to update.
+            tensor_type: New tensor type to assign.
+        """
+        value.tensor_type = tensor_type
+
+    def set_graph_outputs(self, outputs: list[Value]) -> None:
+        """Set the graph output values, replacing any previous outputs.
+
+        Args:
+            outputs: Ordered list of output Values.
+        """
+        self.outputs = list(outputs)
+
+    def remove_node(self, node: Node) -> None:
+        """Remove a node from the graph.
+
+        Raises ``ValueError`` if any of the node's output Values still have
+        consumers (fast-fail policy).
+
+        Cleanup steps:
+        1. Check that all output Values have no users.
+        2. Remove this node's entries from input Value.users.
+        3. Unregister output Values from the value registry.
+        4. Remove the node from the node list and registry.
+
+        Args:
+            node: The node to remove.
+
+        Raises:
+            ValueError: If any output Value is still in use.
+        """
+        # Step 1: fast-fail check
+        for out_value in node.outputs:
+            if out_value.users:
+                msg = f"cannot remove node {node.id!r}: output {out_value.id!r} is still in use"
+                raise ValueError(msg)
+
+        # Step 2: clean input users
+        for slot, inp_value in enumerate(node.inputs):
+            inp_value.users.remove((node, slot))
+
+        # Step 3: unregister output values
+        for out_value in node.outputs:
+            del self._values[out_value.id]
+
+        # Step 4: remove node
+        self.nodes.remove(node)
+        del self._nodes[node.id]
