@@ -315,3 +315,43 @@ class Graph:
             raise ValueError(msg)
 
         return result
+
+    def validate(self) -> None:
+        """Check all IR invariants and raise ``ValueError`` on any violation.
+
+        Invariants checked:
+        1. Every node output has a ``producer`` pointing back to the owning node.
+        2. Every node input is a value registered in this graph.
+        3. Use-def consistency: each ``(consumer, slot)`` in ``value.users``
+           corresponds to ``consumer.inputs[slot] is value``.
+        4. The graph is acyclic (via ``topological_sort``).
+
+        Raises:
+            ValueError: If any invariant is violated.
+        """
+        # 1. Producer back-references
+        for node in self.nodes:
+            for out_value in node.outputs:
+                if out_value.producer is not node:
+                    msg = f"node {node.id!r} output {out_value.id!r}: producer mismatch"
+                    raise ValueError(msg)
+
+        # 2. All node inputs must be registered values
+        for node in self.nodes:
+            for inp_value in node.inputs:
+                if inp_value.id not in self._values:
+                    msg = f"node {node.id!r} input {inp_value.id!r}: not registered in graph"
+                    raise ValueError(msg)
+
+        # 3. Use-def consistency
+        for value in self._values.values():
+            for consumer, slot in value.users:
+                if consumer.id not in self._nodes:
+                    msg = f"value {value.id!r}: user node {consumer.id!r} not registered in graph"
+                    raise ValueError(msg)
+                if slot >= len(consumer.inputs) or consumer.inputs[slot] is not value:
+                    msg = f"value {value.id!r}: user ({consumer.id!r}, slot={slot}) back-reference mismatch"
+                    raise ValueError(msg)
+
+        # 4. Cycle check
+        self.topological_sort()
