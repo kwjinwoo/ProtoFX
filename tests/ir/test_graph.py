@@ -562,3 +562,68 @@ class TestGraphTopologicalSort:
         result = g.topological_sort()
         assert result.index(n_split) < result.index(n_a)
         assert result.index(n_split) < result.index(n_b)
+
+
+class TestGraphValidate:
+    """Tests for Graph.validate — IR invariant checking."""
+
+    def test_valid_graph_passes(self) -> None:
+        """A correctly constructed graph passes validation."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        g.set_graph_outputs([n1.outputs[0]])
+        g.validate()  # should not raise
+
+    def test_empty_graph_passes(self) -> None:
+        """An empty graph passes validation."""
+        g = Graph()
+        g.validate()  # should not raise
+
+    def test_detects_broken_producer(self) -> None:
+        """Fails if a node output's producer does not point back to the node."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt: set producer to None
+        n1.outputs[0].producer = None
+        with pytest.raises(ValueError, match="producer"):
+            g.validate()
+
+    def test_detects_broken_user_backref(self) -> None:
+        """Fails if a value's users list is inconsistent with node.inputs."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt: add a fake user entry
+        from protofx.ir.node import Node
+
+        fake_node = Node(id="fake", op_type="Fake", inputs=[], outputs=[])
+        n1.outputs[0].users.append((fake_node, 0))
+        with pytest.raises(ValueError, match="user"):
+            g.validate()
+
+    def test_detects_unregistered_input_value(self) -> None:
+        """Fails if a node references an input value not in the graph."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt: replace input with an unregistered value
+        from protofx.ir.value import Value
+
+        rogue = Value(id="rogue", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1.inputs[0] = rogue
+        with pytest.raises(ValueError, match="not registered"):
+            g.validate()
+
+    def test_detects_cycle(self) -> None:
+        """Validation catches cycles via topological sort."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        n1 = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        n2 = g.make_node(
+            op_type="Sigmoid", inputs=[n1.outputs[0]], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))]
+        )
+        g.set_node_inputs(n1, [n2.outputs[0]])
+        with pytest.raises(ValueError, match="cycle"):
+            g.validate()
