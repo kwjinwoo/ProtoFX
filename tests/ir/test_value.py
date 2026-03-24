@@ -2,6 +2,7 @@
 
 import enum
 
+import numpy as np
 import pytest
 
 from protofx.ir import DType, TensorType
@@ -229,3 +230,50 @@ class TestValueUsersReadOnly:
         v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
         with pytest.raises(AttributeError):
             v.users = []  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Value.data payload
+# ---------------------------------------------------------------------------
+
+
+class TestValueDataPayload:
+    """Verify Value carries an optional numpy.ndarray data payload."""
+
+    def test_data_defaults_to_none(self) -> None:
+        """A freshly constructed Value has data == None."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        assert v.data is None
+
+    def test_data_accepts_ndarray(self) -> None:
+        """Value.data can hold a numpy.ndarray."""
+        arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        v = Value(id="c0", kind=ValueKind.CONSTANT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3,)), data=arr)
+        assert v.data is arr
+
+    def test_data_preserves_dtype_and_shape(self) -> None:
+        """The stored ndarray retains its original dtype and shape."""
+        arr = np.zeros((2, 3), dtype=np.float64)
+        v = Value(
+            id="i0", kind=ValueKind.INITIALIZER, tensor_type=TensorType(dtype=DType.FLOAT64, shape=(2, 3)), data=arr
+        )
+        assert v.data.dtype == np.float64
+        assert v.data.shape == (2, 3)
+
+    def test_data_mutable_by_direct_assignment(self) -> None:
+        """Value.data is a plain mutable field — can be reassigned."""
+        v = Value(id="v0", kind=ValueKind.CONSTANT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)))
+        assert v.data is None
+        arr = np.array([42.0], dtype=np.float32)
+        v.data = arr
+        assert v.data is arr
+
+    def test_data_none_for_graph_input(self) -> None:
+        """Graph inputs typically have data=None."""
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)))
+        assert v.data is None
+
+    def test_data_none_for_sentinel(self) -> None:
+        """Sentinel values always have data=None."""
+        v = Value(id="s0", kind=ValueKind.SENTINEL, tensor_type=TensorType(dtype=None, shape=None))
+        assert v.data is None
