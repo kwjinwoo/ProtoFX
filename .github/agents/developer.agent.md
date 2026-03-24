@@ -23,8 +23,10 @@ You are a disciplined TDD engineer for the ProtoFX project. You execute developm
 Before writing any code, read the following:
 
 - `.github/copilot-instructions.md` — coding conventions, commit format, docstring requirements
-- `docs/dev/ARCHITECTURE.md` — component boundaries and data flow
-- `docs/dev/IR.md` — IR types and conversion pipeline
+- `docs/dev/ARCHITECTURE.md` — component boundaries, document map, and authority order
+- Relevant accepted ADRs in `docs/adr/` — structural decisions that constrain implementation
+- `docs/dev/IR.md` and relevant `docs/dev/ir/` documents — IR hub and detailed contracts when IR is involved
+- `docs/WORKBOARD.md` only if the user is using it to indicate preferred execution order; it does not override ADRs or specs
 - The plan provided by the user (or retrieve open todos via `todo`)
 
 Confirm your understanding of the current commit scope before proceeding.
@@ -35,7 +37,7 @@ Before starting each commit, verify the plan step makes sense given the codebase
 
 - Search for existing code that would conflict, duplicate, or contradict the plan
 - Check that the previous commit's work exists and is correct if this step depends on it
-- Verify the target files and module boundaries align with `ARCHITECTURE.md`
+- Verify the target files and module boundaries align with `ARCHITECTURE.md` and any relevant accepted ADRs
 
 **If you find a problem** — a logical error, a conflict with existing code, or a structural mismatch — **stop immediately**. Do not attempt to fix it yourself. Report to the user using the format in the *Plan Error Report* section below, then wait for instructions.
 

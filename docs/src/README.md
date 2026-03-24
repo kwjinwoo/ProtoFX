@@ -20,3 +20,6 @@ ProtoFX IR is a graph-owned normalized representation.
 - `Graph` owns topology, membership, and use-def consistency.
 - `Node` and `Value` remain convenient public objects for importer, validator, and emitter code.
 - `TensorType` remains the immutable metadata object attached to values.
+
+For architectural rationale, see `docs/adr/0001-thin-graph-owned-ir.md`.
+For detailed IR specifications, see `docs/dev/IR.md` and the `docs/dev/ir/` documents.

@@ -15,9 +15,21 @@ ProtoFX converts ONNX models into PyTorch `torch.fx.GraphModule` objects. The go
 
 ## Architecture
 
-See [docs/dev/ARCHITECTURE.md](../docs/dev/ARCHITECTURE.md) for detailed architecture and component descriptions.
-See [docs/dev/IR.md](../docs/dev/IR.md) for IR design documentation.
-See [docs/ROADMAP.md](../docs/ROADMAP.md) for planned milestones and feature status.
+ProtoFX uses an ADR-centered documentation system.
+
+- See [docs/adr/README.md](../docs/adr/README.md) for ADR process and index.
+- See [docs/dev/ARCHITECTURE.md](../docs/dev/ARCHITECTURE.md) for architecture overview, document map, and authority order.
+- See [docs/dev/IR.md](../docs/dev/IR.md) for the IR documentation hub.
+- See [docs/dev/ir/](../docs/dev/ir/) documents for detailed IR specifications.
+- See [docs/ROADMAP.md](../docs/ROADMAP.md) for planned milestones and feature status.
+- See [docs/WORKBOARD.md](../docs/WORKBOARD.md) only when the user wants an execution checklist; it is not an architectural source of truth.
+
+When documents disagree, use this precedence:
+
+1. ADRs in `docs/adr/` for architecture decisions.
+2. Specifications in `docs/dev/` for implementation-facing contracts.
+3. `docs/ROADMAP.md` for milestone priority and scope.
+4. `docs/WORKBOARD.md` for user-directed execution order only.
 
 ## Build and Test
 

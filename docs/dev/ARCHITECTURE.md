@@ -8,6 +8,28 @@ ProtoFX is a three-stage pipeline that converts ONNX models into PyTorch `torch.
 ONNX ModelProto ──▶ Importer ──▶ Thin Normalized IR ──▶ Validation / Analysis ──▶ Emitter ──▶ torch.fx.GraphModule
 ```
 
+Accepted architecture decisions are recorded in `docs/adr/`.
+Detailed subsystem specifications live under `docs/dev/`.
+
+## Documentation System
+
+ProtoFX uses a layered documentation model so architecture decisions, specifications, and planning state do
+not collapse into a single document.
+
+| Document area | Purpose | Authority |
+|---------------|---------|-----------|
+| `docs/adr/` | Records accepted architecture decisions and their rationale | Source of truth for structural decisions |
+| `docs/dev/` | Records technical specifications derived from accepted decisions | Source of truth for implementation-facing contracts |
+| `docs/ROADMAP.md` | Records milestones, priorities, and project-level sequencing | Source of truth for planned project scope |
+| `docs/WORKBOARD.md` | User-maintained execution checklist for directing agents | Convenience only; not authoritative for architecture |
+
+When a document category disagrees with another, the precedence is:
+
+1. ADRs for architectural decisions.
+2. Development specifications for detailed contracts.
+3. Roadmap for milestone priority.
+4. Workboard for temporary execution guidance.
+
 ## Directory Structure
 
 ```
@@ -39,7 +61,7 @@ A thin normalized graph representation independent of both ONNX and `torch.fx`.
 - Preserves convenient relationship accessors (`value.producer`, `value.users`, `node.inputs`, `node.outputs`)
 - Acts as the semantic boundary between Importer and Emitter
 - Provides a stable target for validation and analysis before backend emission
-- See [IR.md](IR.md) for details
+- See `IR.md` and the `ir/` specification documents for details
 
 ### Emitters
 
@@ -85,3 +107,19 @@ support downstream compatibility, testing, and future expansion without over-des
 Within that boundary, ProtoFX treats `ir.Graph` as the structural owner of nodes, values, and topological
 ordering. This avoids embedding graph consistency rules inside individual dataclass constructors while still
 allowing a convenient object-oriented API for graph consumers.
+
+## Documentation Map
+
+The current architecture documentation is intentionally distributed:
+
+- `docs/adr/README.md` — ADR index and process.
+- `docs/adr/0001-thin-graph-owned-ir.md` — accepted IR architecture decision.
+- `docs/adr/0002-documentation-system.md` — accepted documentation and decision-recording model.
+- `docs/dev/IR.md` — IR documentation hub.
+- `docs/dev/ir/invariants.md` — IR invariants and validation-facing rules.
+- `docs/dev/ir/type-system.md` — tensor metadata and value classification model.
+- `docs/dev/ir/graph-model.md` — graph ownership and mutation APIs.
+- `docs/dev/ir/contracts.md` — importer, validator, and emitter boundaries.
+
+This split is intentional. Architecture documents should stay navigable enough that both humans and agents can
+determine which document is authoritative before reading implementation details.
