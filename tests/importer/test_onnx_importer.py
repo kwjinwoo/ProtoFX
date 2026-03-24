@@ -548,3 +548,97 @@ class TestOutputTypeResolution:
         assert node.inputs[0] is g.inputs[0]
         assert node.inputs[1].kind == ValueKind.SENTINEL
         assert node.inputs[2].kind == ValueKind.SENTINEL
+
+
+# ── Constant Op Inlining ─────────────────────────────────────────────
+
+
+class TestConstantOpInlining:
+    """Verify that ONNX Constant ops are inlined as CONSTANT values."""
+
+    def test_constant_op_not_in_nodes(self) -> None:
+        """Constant ops should not appear as ir.Node in the graph."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        const_tensor = onnx.numpy_helper.from_array(np.array([1.0, 2.0, 3.0], dtype=np.float32), name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        # Only the Add node should be in the graph, not Constant
+        assert len(g.nodes) == 1
+        assert g.nodes[0].op_type == "Add"
+
+    def test_constant_value_kind(self) -> None:
+        """Inlined constant should have CONSTANT kind."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        const_tensor = onnx.numpy_helper.from_array(np.array([1.0, 2.0, 3.0], dtype=np.float32), name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        # Add's second input should be CONSTANT
+        const_input = g.nodes[0].inputs[1]
+        assert const_input.kind == ValueKind.CONSTANT
+
+    def test_constant_data_preserved(self) -> None:
+        """Inlined constant should carry the numpy data."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        expected = np.array([10.0, 20.0, 30.0], dtype=np.float32)
+        const_tensor = onnx.numpy_helper.from_array(expected, name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        const_input = g.nodes[0].inputs[1]
+        np.testing.assert_array_equal(const_input.data, expected)
+
+    def test_constant_producer_is_none(self) -> None:
+        """Inlined constant should have no producer."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        const_tensor = onnx.numpy_helper.from_array(np.zeros((3,), dtype=np.float32), name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        const_input = g.nodes[0].inputs[1]
+        assert const_input.producer is None
+
+    def test_constant_dtype(self) -> None:
+        """Inlined constant should have correct dtype."""
+        X = helper.make_tensor_value_info("X", TensorProto.INT64, [2])
+        Y = helper.make_tensor_value_info("Y", TensorProto.INT64, [2])
+        const_tensor = onnx.numpy_helper.from_array(np.array([5, 10], dtype=np.int64), name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        const_input = g.nodes[0].inputs[1]
+        assert const_input.tensor_type.dtype == DType.INT64
+
+    def test_constant_shape(self) -> None:
+        """Inlined constant should have correct shape."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        const_tensor = onnx.numpy_helper.from_array(np.zeros((2, 3), dtype=np.float32), name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        const_input = g.nodes[0].inputs[1]
+        assert const_input.tensor_type.shape == (2, 3)
