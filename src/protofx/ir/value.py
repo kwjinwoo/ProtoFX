@@ -13,6 +13,8 @@ import enum
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from protofx.ir.node import Node
 
@@ -62,6 +64,8 @@ class Value:
         kind: Classification of this value's origin.
         tensor_type: Tensor metadata (dtype and shape).
         name: Original ONNX name preserved as source metadata, or ``None``.
+        data: Optional tensor payload as a ``numpy.ndarray``. Present for
+            ``CONSTANT`` and ``INITIALIZER`` values; ``None`` otherwise.
         producer: (read-only) The IR ``Node`` that produces this value, or
             ``None`` for graph inputs and sentinel values.
         users: (read-only) Tuple of ``(node, input_slot_index)`` pairs
@@ -72,6 +76,7 @@ class Value:
     kind: ValueKind
     tensor_type: TensorType
     name: str | None = None
+    data: np.ndarray | None = None
     _producer: Node | None = field(default=None, init=False, repr=False)
     _users: list[tuple[Node, int]] = field(default_factory=list, init=False, repr=False)
 
