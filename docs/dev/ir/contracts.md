@@ -57,6 +57,57 @@ It must:
 
 The emitter must not reinterpret raw ONNX protobuf details.
 
+### Public Entry Point
+
+```python
+from protofx.emitters import emit_graph
+
+gm: torch.fx.GraphModule = emit_graph(graph)
+```
+
+`emit_graph(graph: ir.Graph) -> torch.fx.GraphModule` is the sole public entry point.
+
+### Emission Phases
+
+1. **Placeholders** — each `GRAPH_INPUT` value emits an `fx_graph.placeholder()` node.
+2. **Initializers** — each `INITIALIZER` value registers a buffer on the root module and emits
+   `fx_graph.get_attr()`.
+3. **Node dispatch** — nodes are walked in topological order. For each node:
+   - Input values are resolved from the value map. `SENTINEL` inputs become `None`.
+     `CONSTANT` and `INITIALIZER` values not yet emitted are lazily materialized as buffers.
+   - The op handler is dispatched via `dispatch_op(node.op_type)`.
+   - Handler outputs are mapped back to IR output values by slot position.
+4. **Output** — graph outputs are packed as a tuple and emitted via `fx_graph.output()`.
+
+### FX API Restriction
+
+The emitter uses only the following `torch.fx.Graph` high-level APIs:
+
+- `graph.placeholder(name)`
+- `graph.get_attr(attr_name)`
+- `graph.call_function(target, args, kwargs)`
+- `graph.output(result)`
+
+### Op Handler Signature
+
+```python
+def handler(
+    node: ir.Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+```
+
+- `node`: the IR node being lowered (provides access to attributes, opset, etc.).
+- `args`: FX node references matching IR node inputs. `SENTINEL` inputs are `None`.
+- `fx_graph`: the FX graph under construction.
+- `module`: the root `torch.nn.Module` for buffer or parameter registration.
+- Returns a list of `torch.fx.Node`, one per IR node output (multi-output supported).
+
+Handlers are registered with `@register_op("OpName")` and dispatched via `dispatch_op("OpName")`.
+Unregistered ops raise `NotImplementedError`.
+
 ## Non-Goals
 
 The IR boundary does not imply:
