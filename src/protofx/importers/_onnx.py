@@ -219,6 +219,8 @@ def _import_nodes(
     graph_proto: onnx.GraphProto,
     value_registry: dict[str, Value],
     vi_map: dict[str, onnx.TypeProto],
+    *,
+    default_opset: int | None = None,
 ) -> None:
     """Import ONNX nodes into the IR graph with use-def wiring.
 
@@ -233,6 +235,7 @@ def _import_nodes(
         graph_proto: The source ONNX graph.
         value_registry: Mutable name-to-Value mapping for use-def resolution.
         vi_map: Name-to-TypeProto mapping for output type resolution.
+        default_opset: Default domain opset version from the model.
     """
     for node_proto in graph_proto.node:
         # Handle Constant op inlining
@@ -263,12 +266,16 @@ def _import_nodes(
         for attr in node_proto.attribute:
             attributes[attr.name] = _normalize_attribute(attr)
 
+        # Resolve opset version: use node-level domain opset or model default
+        opset_version = default_opset if node_proto.domain in ("", "ai.onnx") else None
+
         # Create ir.Node
         ir_node = graph.make_node(
             op_type=node_proto.op_type,
             inputs=inputs,
             output_types=output_types,
             domain=node_proto.domain,
+            opset_version=opset_version,
             attributes=attributes,
             name=node_proto.name or None,
             output_names=output_names,
@@ -298,8 +305,21 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
     Returns:
         A populated ``ir.Graph``.
     """
+    # Phase 0: run ONNX shape inference to fill missing value_info
+    try:
+        model_proto = onnx.shape_inference.infer_shapes(model_proto)
+    except Exception:
+        pass  # Inference failure is non-fatal; missing types become None
+
     graph_proto = model_proto.graph
     graph = Graph(name=graph_proto.name or None)
+
+    # Extract default domain opset version
+    default_opset: int | None = None
+    for opset in model_proto.opset_import:
+        if opset.domain in ("", "ai.onnx"):
+            default_opset = opset.version
+            break
 
     # Phase 1: initializers first (needed for input dedup)
     init_names = _import_initializers(graph, graph_proto)
@@ -318,7 +338,7 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
 
     # Phase 4: import nodes
     vi_map = _build_value_info_map(graph_proto)
-    _import_nodes(graph, graph_proto, value_registry, vi_map)
+    _import_nodes(graph, graph_proto, value_registry, vi_map, default_opset=default_opset)
 
     # Phase 5: set graph outputs
     graph_outputs: list[Value] = []

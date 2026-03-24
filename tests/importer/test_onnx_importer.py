@@ -506,7 +506,7 @@ class TestOutputTypeResolution:
         assert g.nodes[0].outputs[0].tensor_type.shape == (2, 3)
 
     def test_unknown_output_type_when_no_info(self) -> None:
-        """Outputs without value_info should get dtype=None, shape=None."""
+        """Outputs without value_info are filled by shape inference when possible."""
         X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
         # Intermediate value "Y" has no value_info, only graph output "Z" does
         Y_out = helper.make_tensor_value_info("Z", TensorProto.FLOAT, [2, 3])
@@ -516,10 +516,10 @@ class TestOutputTypeResolution:
 
         g = import_model(model)
 
-        # relu output "Y" has no explicit value_info -> unknown type
+        # Shape inference fills intermediate "Y" with inferred type
         relu_out = g.nodes[0].outputs[0]
-        assert relu_out.tensor_type.dtype is None
-        assert relu_out.tensor_type.shape is None
+        assert relu_out.tensor_type.dtype == DType.FLOAT32
+        assert relu_out.tensor_type.shape == (2, 3)
 
     def test_graph_outputs_set(self) -> None:
         """Graph outputs should be set after node import."""

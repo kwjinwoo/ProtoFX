@@ -42,11 +42,11 @@ forces a design change.
 
 Execute the remaining IR work in this order.
 
-- [ ] Ask `@Planner` for a commit-level plan to add explicit graph APIs for `SENTINEL`, `CONSTANT`, and `INITIALIZER` values.
-- [ ] Implement graph-owned construction helpers for omitted optional inputs, constants, and initializers.
-- [ ] Add tests for sentinel, constant, and initializer creation, ownership, and validation behavior.
-- [ ] Tighten `Graph.validate()` to cover graph outputs, boundary values, kind-specific producer rules, and ownership errors beyond the current structural checks.
-- [ ] Add graph-level metadata needed by import, such as opset imports and source provenance policy, if implementation requires it.
+- [x] Ask `@Planner` for a commit-level plan to add explicit graph APIs for `SENTINEL`, `CONSTANT`, and `INITIALIZER` values.
+- [x] Implement graph-owned construction helpers for omitted optional inputs, constants, and initializers.
+- [x] Add tests for sentinel, constant, and initializer creation, ownership, and validation behavior.
+- [x] Tighten `Graph.validate()` to cover graph outputs, boundary values, kind-specific producer rules, and ownership errors beyond the current structural checks.
+- [x] Add graph-level metadata needed by import, such as opset imports and source provenance policy, if implementation requires it.
 - [ ] Ask `@Planner` for a commit-level plan for the first ONNX importer slice targeting the current IR contract.
 - [ ] Create the initial importer package and convert minimal `onnx.ModelProto` graphs into `ir.Graph` inputs, initializers, and nodes.
 - [ ] Implement constant and initializer normalization in the importer against the graph-owned IR APIs.
