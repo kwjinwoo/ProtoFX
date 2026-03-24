@@ -642,3 +642,115 @@ class TestConstantOpInlining:
 
         const_input = g.nodes[0].inputs[1]
         assert const_input.tensor_type.shape == (2, 3)
+
+
+# ── import_model Entry Point ─────────────────────────────────────────
+
+
+class TestImportModelEntryPoint:
+    """Verify import_model top-level behavior: name, opset, shape inference, validate."""
+
+    def test_graph_name_preserved(self) -> None:
+        """Graph name should come from the ONNX ModelProto graph name."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu], name="my_graph")
+
+        g = import_model(model)
+
+        assert g.name == "my_graph"
+
+    def test_opset_version_on_nodes(self) -> None:
+        """Nodes should carry the default domain opset version from the model."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu], opset=17)
+
+        g = import_model(model)
+
+        assert g.nodes[0].opset_version == 17
+
+    def test_validate_passes_after_import(self) -> None:
+        """A well-formed imported graph should pass ir.Graph.validate()."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        g.validate()  # should not raise
+
+    def test_validate_with_initializers(self) -> None:
+        """Imported graph with initializers should also pass validate()."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4])
+        W_data = np.ones((3, 4), dtype=np.float32)
+        W = onnx.numpy_helper.from_array(W_data, name="W")
+        matmul = helper.make_node("MatMul", ["X", "W"], ["Y"])
+        model = _make_model([X], outputs=[Y], initializers=[W], nodes=[matmul])
+
+        g = import_model(model)
+
+        g.validate()  # should not raise
+
+    def test_validate_with_constant_inlining(self) -> None:
+        """Graph with inlined constants should pass validate()."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        const_tensor = onnx.numpy_helper.from_array(np.ones((2, 3), dtype=np.float32), name="C")
+        const_node = helper.make_node("Constant", [], ["C"], value=const_tensor)
+        add_node = helper.make_node("Add", ["X", "C"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[const_node, add_node])
+
+        g = import_model(model)
+
+        g.validate()  # should not raise
+
+    def test_shape_inference_fills_intermediate_types(self) -> None:
+        """ONNX shape inference should fill missing intermediate value_info."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Z = helper.make_tensor_value_info("Z", TensorProto.FLOAT, None)
+        # Two-node chain: Relu(X)->Y, Sigmoid(Y)->Z
+        # Only X and Z have explicit type info; Y should be inferred
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        sigmoid = helper.make_node("Sigmoid", ["Y"], ["Z"])
+        model = _make_model([X], outputs=[Z], nodes=[relu, sigmoid])
+
+        g = import_model(model)
+
+        # After shape inference, intermediate "Y" should have dtype/shape filled
+        relu_out = g.nodes[0].outputs[0]
+        assert relu_out.tensor_type.dtype == DType.FLOAT32
+        assert relu_out.tensor_type.shape == (2, 3)
+
+    def test_shape_inference_fallback_to_none(self) -> None:
+        """When shape inference cannot determine type, dtype/shape should be None."""
+        # Build a model where an intermediate value cannot be inferred
+        # Using a custom domain op that shape inference doesn't know about
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Z = helper.make_tensor_value_info("Z", TensorProto.FLOAT, [2, 3])
+        custom_node = helper.make_node("MyCustomOp", ["X"], ["Y"], domain="custom.domain")
+        relu = helper.make_node("Relu", ["Y"], ["Z"])
+        graph = helper.make_graph(
+            [custom_node, relu],
+            "test",
+            [X],
+            [Z],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[
+                helper.make_opsetid("", 17),
+                helper.make_opsetid("custom.domain", 1),
+            ],
+        )
+
+        g = import_model(model)
+
+        # MyCustomOp output "Y" is not inferable => None
+        custom_out = g.nodes[0].outputs[0]
+        assert custom_out.tensor_type.dtype is None
+        assert custom_out.tensor_type.shape is None
