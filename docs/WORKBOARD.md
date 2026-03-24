@@ -20,6 +20,10 @@ It must not override accepted ADRs, development specifications, or roadmap scope
 
 Complete the Milestone 1 IR foundation so importer and emitter work can target a stable graph-owned IR.
 
+The Milestone 1 contract alignment that narrowed provenance scope, made `topological_sort()` the authoritative
+ordering view, and kept fail-fast import validation at the boundary is recorded in
+`docs/adr/0003-milestone-1-ir-contract-reconciliation.md`.
+
 ## Completed Baseline
 
 These items are already present in the current codebase and should generally not be reopened unless a later task
@@ -46,15 +50,16 @@ Execute the remaining IR work in this order.
 - [x] Implement graph-owned construction helpers for omitted optional inputs, constants, and initializers.
 - [x] Add tests for sentinel, constant, and initializer creation, ownership, and validation behavior.
 - [x] Tighten `Graph.validate()` to cover graph outputs, boundary values, kind-specific producer rules, and ownership errors beyond the current structural checks.
-- [x] Add graph-level metadata needed by import, such as opset imports and source provenance policy, if implementation requires it.
-- [ ] Ask `@Planner` for a commit-level plan for the first ONNX importer slice targeting the current IR contract.
-- [ ] Create the initial importer package and convert minimal `onnx.ModelProto` graphs into `ir.Graph` inputs, initializers, and nodes.
-- [ ] Implement constant and initializer normalization in the importer against the graph-owned IR APIs.
-- [ ] Add importer tests for minimal ONNX fixtures and invariant preservation.
-- [ ] Ask `@Planner` for a commit-level plan for the first FX emitter slice targeting the current IR contract.
-- [ ] Create the initial emitter package that consumes normalized `ir.Graph` and produces a minimal `torch.fx.Graph` or `GraphModule`.
-- [ ] Add emitter tests and one end-to-end smoke test covering ONNX -> IR -> FX on a minimal model.
-- [ ] Reconcile `docs/dev/ir/` specifications with the implemented importer and emitter surface once those boundaries become concrete.
+- [x] Reconcile Milestone 1 provenance scope and node-ordering expectations with the implemented IR contract.
+- [x] Ask `@Planner` for a commit-level plan for the first ONNX importer slice targeting the current IR contract.
+- [x] Create the initial importer package and convert minimal `onnx.ModelProto` graphs into `ir.Graph` inputs, initializers, and nodes.
+- [x] Implement constant and initializer normalization in the importer against the graph-owned IR APIs.
+- [x] Add importer tests for minimal ONNX fixtures and invariant preservation.
+- [x] Ask `@Planner` for a commit-level plan for the first FX emitter slice targeting the current IR contract.
+- [x] Create the initial emitter package that consumes normalized `ir.Graph` and produces a minimal `torch.fx.Graph` or `GraphModule`.
+- [x] Add emitter tests and one end-to-end smoke test covering ONNX -> IR -> FX on a minimal model.
+- [ ] Update the importer entry point to call `graph.validate()` before returning so the fail-fast boundary documented for Milestone 1 is actually enforced.
+- [ ] After importer fail-fast validation lands, re-review the importer/emitter boundary and remove this workboard if no execution checklist is still needed.
 
 ## Deferred Until Needed
 

@@ -14,6 +14,7 @@ Core infrastructure required before any op handler can be written.
 
 The accepted IR direction for this milestone is recorded in `docs/adr/0001-thin-graph-owned-ir.md`.
 Detailed IR contracts are documented in `docs/dev/IR.md` and the `docs/dev/ir/` specification set.
+Milestone 1 contract alignment is recorded in `docs/adr/0003-milestone-1-ir-contract-reconciliation.md`.
 
 | Status | Item |
 |--------|------|
@@ -21,7 +22,7 @@ Detailed IR contracts are documented in `docs/dev/IR.md` and the `docs/dev/ir/` 
 | 📋 | Refactor current frozen `Node` / `Value` bootstrap into graph-owned mutable IR |
 | 📋 | Establish ADR-centered documentation and specification structure |
 | 📋 | ONNX importer (`onnx.ModelProto` → IR) |
-| 📋 | IR validation and normalization boundary |
+| 📋 | IR validation and normalization boundary (importer returns `graph.validate()`-clean IR) |
 | 📋 | `torch.fx` emitter (IR → `GraphModule`) |
 | 📋 | Op handler registry (`@register_op` decorator) |
 | 📋 | Basic test infrastructure (`tests/ops/` fixtures) |

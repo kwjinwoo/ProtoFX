@@ -10,6 +10,7 @@ ONNX ModelProto ──▶ Importer ──▶ Thin Normalized IR ──▶ Valida
 
 Accepted architecture decisions are recorded in `docs/adr/`.
 Detailed subsystem specifications live under `docs/dev/`.
+Milestone 1 IR contract reconciliation is recorded in `docs/adr/0003-milestone-1-ir-contract-reconciliation.md`.
 
 ## Documentation System
 
@@ -61,6 +62,7 @@ A thin normalized graph representation independent of both ONNX and `torch.fx`.
 - Preserves convenient relationship accessors (`value.producer`, `value.users`, `node.inputs`, `node.outputs`)
 - Acts as the semantic boundary between Importer and Emitter
 - Provides a stable target for validation and analysis before backend emission
+- Exposes `Graph.topological_sort()` as the authoritative dependency-safe node ordering view
 - See `IR.md` and the `ir/` specification documents for details
 
 ### Emitters
@@ -101,12 +103,18 @@ This boundary is important for two reasons:
 - ONNX protobuf details, opset quirks, and attribute decoding should not leak into FX emission code.
 - FX-specific lowering decisions should not distort the imported graph model.
 
+Within Milestone 1, the importer is expected to return validated IR. Fail-fast behavior belongs at the importer
+boundary, while deeper analysis can remain a separate concern after import.
+
 The project does **not** treat IR as a full compiler framework. It is a minimal normalization layer chosen to
 support downstream compatibility, testing, and future expansion without over-design.
 
 Within that boundary, ProtoFX treats `ir.Graph` as the structural owner of nodes, values, and topological
 ordering. This avoids embedding graph consistency rules inside individual dataclass constructors while still
 allowing a convenient object-oriented API for graph consumers.
+
+Milestone 1 does not require `graph.nodes` itself to remain physically topologically sorted after every graph
+mutation. Consumers that require dependency-safe order must use `Graph.topological_sort()`.
 
 ## Documentation Map
 
@@ -115,6 +123,7 @@ The current architecture documentation is intentionally distributed:
 - `docs/adr/README.md` — ADR index and process.
 - `docs/adr/0001-thin-graph-owned-ir.md` — accepted IR architecture decision.
 - `docs/adr/0002-documentation-system.md` — accepted documentation and decision-recording model.
+- `docs/adr/0003-milestone-1-ir-contract-reconciliation.md` — accepted Milestone 1 contract alignment.
 - `docs/dev/IR.md` — IR documentation hub.
 - `docs/dev/ir/invariants.md` — IR invariants and validation-facing rules.
 - `docs/dev/ir/type-system.md` — tensor metadata and value classification model.

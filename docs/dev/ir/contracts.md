@@ -25,8 +25,19 @@ It must:
 - resolve opset and domain differences
 - normalize attributes into Python-native values
 - normalize constants, initializers, and omitted optional inputs into IR forms
-- preserve source provenance needed for diagnostics
+- preserve Milestone 1 source provenance needed for diagnostics
 - produce graph-valid IR or fail early
+
+For Milestone 1, the preserved provenance scope is:
+
+- `Graph.name`
+- `Node.name`
+- `Node.op_type`
+- `Node.domain`
+- `Node.opset_version`
+- `Value.name`
+
+The importer satisfies the fail-fast requirement by returning only graphs that pass `graph.validate()`.
 
 The importer must not leak raw ONNX protobuf handling into the emitter.
 
@@ -39,6 +50,7 @@ Validation is responsible for:
 - graph well-formedness
 - producer and user consistency
 - ordered interface consistency
+- acyclicity and dependency-safe traversal via `Graph.topological_sort()`
 - required attribute presence and normalized form
 - shape and dtype constraints when enough metadata is available
 
@@ -78,6 +90,9 @@ gm: torch.fx.GraphModule = emit_graph(graph)
    - The op handler is dispatched via `dispatch_op(node.op_type)`.
    - Handler outputs are mapped back to IR output values by slot position.
 4. **Output** — graph outputs are packed as a tuple and emitted via `fx_graph.output()`.
+
+The emitter must treat `Graph.topological_sort()` as the authoritative node-ordering API rather than assuming
+that `graph.nodes` is already in dependency-safe order.
 
 ### FX API Restriction
 

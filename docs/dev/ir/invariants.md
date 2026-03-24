@@ -43,9 +43,12 @@ constants that remain as nodes produce `NODE_OUTPUT` values instead.
 
 Node inputs and outputs preserve ONNX positional order.
 
-### 6. Graph Nodes Remain in Topological Order
+### 6. Acyclic Graph with Explicit Topological View
 
-`ir.Graph.nodes` must remain topologically ordered.
+The graph must remain acyclic, but `ir.Graph.nodes` is not required to stay physically topologically ordered
+after every mutation.
+
+When consumers require dependency-safe ordering, they must use `Graph.topological_sort()`.
 
 ### 7. Graph Inputs and Initializers Remain Distinct
 
@@ -85,11 +88,13 @@ The IR should retain enough source metadata to produce useful diagnostics and de
 
 At minimum, preserve when available:
 
+- graph name
 - original node names
 - output names
 - operator type and domain
 - opset context
-- graph boundary provenance
+
+Milestone 1 does not require separate graph-boundary provenance objects beyond these fields.
 
 ### 14. Tensor Metadata Lives on Values
 
@@ -114,3 +119,6 @@ model yet.
 
 When the importer produces invalid IR, ProtoFX should fail early rather than defer structural or semantic
 problems to the emitter.
+
+For Milestone 1, the minimum enforcement point is that the importer returns only graphs that pass
+`graph.validate()`.

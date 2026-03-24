@@ -46,3 +46,4 @@ Start new ADRs from `docs/adr/TEMPLATE.md`.
 |-----|-------|--------|
 | 0001 | Thin, graph-owned normalized IR | Accepted |
 | 0002 | ADR-centered documentation system | Accepted |
+| 0003 | Milestone 1 IR contract reconciliation | Accepted |
