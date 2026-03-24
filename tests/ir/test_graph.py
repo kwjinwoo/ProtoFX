@@ -630,6 +630,117 @@ class TestGraphValidate:
             g.validate()
 
 
+class TestGraphValidateTightened:
+    """Tests for tightened Graph.validate — kind-specific producer rules, outputs, ownership."""
+
+    def test_sentinel_with_producer_fails(self) -> None:
+        """SENTINEL values must have producer=None; corrupt producer must fail."""
+        g = Graph()
+        s = g.add_sentinel()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt: give sentinel a producer
+        s._producer = node
+        with pytest.raises(ValueError, match="producer"):
+            g.validate()
+
+    def test_constant_with_producer_fails(self) -> None:
+        """CONSTANT values created via add_constant must have producer=None."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        c = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt: give constant a producer
+        c._producer = node
+        with pytest.raises(ValueError, match="producer"):
+            g.validate()
+
+    def test_initializer_with_producer_fails(self) -> None:
+        """INITIALIZER values must have producer=None."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        init = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt
+        init._producer = node
+        with pytest.raises(ValueError, match="producer"):
+            g.validate()
+
+    def test_graph_input_with_producer_fails(self) -> None:
+        """GRAPH_INPUT values must have producer=None."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt
+        inp._producer = node
+        with pytest.raises(ValueError, match="producer"):
+            g.validate()
+
+    def test_node_output_without_producer_fails(self) -> None:
+        """NODE_OUTPUT values must have a producer."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        node = g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        # Corrupt: remove producer
+        node.outputs[0]._producer = None
+        with pytest.raises(ValueError, match="producer"):
+            g.validate()
+
+    def test_graph_output_not_registered_fails(self) -> None:
+        """Graph outputs must be registered values."""
+        from protofx.ir.value import Value
+
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        g.make_node(op_type="Relu", inputs=[inp], output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))])
+        rogue = Value(id="rogue", kind=ValueKind.NODE_OUTPUT, tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        g.outputs = [rogue]
+        with pytest.raises(ValueError, match="output.*not registered"):
+            g.validate()
+
+    def test_initializer_not_in_list_fails(self) -> None:
+        """An INITIALIZER value must appear in graph.initializers."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        init = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        # Corrupt: remove from initializers list but keep registered
+        g.initializers.remove(init)
+        with pytest.raises(ValueError, match="initializer.*not in.*initializers"):
+            g.validate()
+
+    def test_graph_input_not_in_inputs_list_fails(self) -> None:
+        """A GRAPH_INPUT value must appear in graph.inputs."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)))
+        # Corrupt: remove from inputs list but keep registered
+        g.inputs.remove(inp)
+        with pytest.raises(ValueError, match="input.*not in.*inputs"):
+            g.validate()
+
+    def test_valid_graph_with_special_values_passes(self) -> None:
+        """A correctly constructed graph with sentinel, constant, and initializer passes."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)))
+        w = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 4)),
+            data=np.zeros((3, 4), dtype=np.float32),
+        )
+        _s = g.add_sentinel()
+        _c = g.add_constant(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)),
+            data=np.array([1.0], dtype=np.float32),
+        )
+        node = g.make_node(
+            op_type="MatMul",
+            inputs=[inp, w],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 4))],
+        )
+        g.set_graph_outputs([node.outputs[0]])
+        g.validate()  # should not raise
+
+
 # ---------------------------------------------------------------------------
 # Graph.initializers field
 # ---------------------------------------------------------------------------
