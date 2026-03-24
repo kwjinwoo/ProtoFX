@@ -347,4 +347,7 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
             graph_outputs.append(value_registry[out_vi.name])
     graph.set_graph_outputs(graph_outputs)
 
+    # Phase 6: validate IR invariants (fail-fast contract)
+    graph.validate()
+
     return graph
