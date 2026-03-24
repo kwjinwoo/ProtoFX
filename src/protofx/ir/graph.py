@@ -7,6 +7,8 @@ relationships must go through ``Graph`` methods.
 
 from __future__ import annotations
 
+import numpy as np
+
 from protofx.ir.node import AttributeValue, Node
 from protofx.ir.tensor_type import TensorType
 from protofx.ir.value import Value, ValueKind
@@ -24,6 +26,7 @@ class Graph:
         parent: Optional parent ``Graph`` reference for future subgraph support.
         inputs: Ordered list of graph input ``Value`` instances.
         outputs: Ordered list of graph output ``Value`` instances.
+        initializers: Ordered list of ``INITIALIZER`` ``Value`` instances.
         nodes: Ordered list of ``Node`` instances in insertion order.
     """
 
@@ -38,6 +41,7 @@ class Graph:
         self.parent = parent
         self.inputs: list[Value] = []
         self.outputs: list[Value] = []
+        self.initializers: list[Value] = []
         self.nodes: list[Node] = []
 
         # Internal registries
@@ -116,6 +120,84 @@ class Graph:
         )
         self._register_value(value)
         self.inputs.append(value)
+        return value
+
+    def add_sentinel(self) -> Value:
+        """Create and register a ``SENTINEL`` value for an omitted optional input.
+
+        Each call creates a new distinct sentinel instance.
+
+        Returns:
+            The newly created ``SENTINEL`` Value.
+        """
+        value = Value(
+            id=self._new_value_id(),
+            kind=ValueKind.SENTINEL,
+            tensor_type=TensorType(dtype=None, shape=None),
+        )
+        self._register_value(value)
+        return value
+
+    def add_constant(
+        self,
+        *,
+        tensor_type: TensorType,
+        data: np.ndarray,
+        name: str | None = None,
+    ) -> Value:
+        """Create and register a ``CONSTANT`` value with a data payload.
+
+        Constants represent values produced by inlined ``Constant`` ops during
+        import. They are not appended to ``graph.inputs`` or
+        ``graph.initializers``.
+
+        Args:
+            tensor_type: Tensor metadata for the constant.
+            data: The constant tensor data as a numpy array.
+            name: Optional ONNX source name.
+
+        Returns:
+            The newly created ``CONSTANT`` Value.
+        """
+        value = Value(
+            id=self._new_value_id(),
+            kind=ValueKind.CONSTANT,
+            tensor_type=tensor_type,
+            name=name,
+            data=data,
+        )
+        self._register_value(value)
+        return value
+
+    def add_initializer(
+        self,
+        *,
+        tensor_type: TensorType,
+        data: np.ndarray,
+        name: str | None = None,
+    ) -> Value:
+        """Create and register an ``INITIALIZER`` value with a data payload.
+
+        Initializers represent pretrained weights and biases. They are appended
+        to ``graph.initializers`` but not to ``graph.inputs``.
+
+        Args:
+            tensor_type: Tensor metadata for the initializer.
+            data: The initializer tensor data as a numpy array.
+            name: Optional ONNX source name.
+
+        Returns:
+            The newly created ``INITIALIZER`` Value.
+        """
+        value = Value(
+            id=self._new_value_id(),
+            kind=ValueKind.INITIALIZER,
+            tensor_type=tensor_type,
+            name=name,
+            data=data,
+        )
+        self._register_value(value)
+        self.initializers.append(value)
         return value
 
     def make_node(
