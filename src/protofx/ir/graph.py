@@ -407,10 +407,22 @@ class Graph:
         3. Use-def consistency: each ``(consumer, slot)`` in ``value.users``
            corresponds to ``consumer.inputs[slot] is value``.
         4. The graph is acyclic (via ``topological_sort``).
+        5. Kind-specific producer rules: GRAPH_INPUT, SENTINEL, CONSTANT, and
+           INITIALIZER must have ``producer=None``; NODE_OUTPUT must have a producer.
+        6. Graph outputs must be registered values.
+        7. GRAPH_INPUT values must appear in ``graph.inputs``.
+        8. INITIALIZER values must appear in ``graph.initializers``.
 
         Raises:
             ValueError: If any invariant is violated.
         """
+        _no_producer_kinds = {
+            ValueKind.GRAPH_INPUT,
+            ValueKind.SENTINEL,
+            ValueKind.CONSTANT,
+            ValueKind.INITIALIZER,
+        }
+
         # 1. Producer back-references
         for node in self.nodes:
             for out_value in node.outputs:
@@ -437,3 +449,34 @@ class Graph:
 
         # 4. Cycle check
         self.topological_sort()
+
+        # 5. Kind-specific producer rules
+        for value in self._values.values():
+            if value.kind in _no_producer_kinds:
+                if value.producer is not None:
+                    msg = f"value {value.id!r} (kind={value.kind.name}): must have producer=None"
+                    raise ValueError(msg)
+            elif value.kind == ValueKind.NODE_OUTPUT:
+                if value.producer is None:
+                    msg = f"value {value.id!r} (kind=NODE_OUTPUT): must have a producer"
+                    raise ValueError(msg)
+
+        # 6. Graph outputs must be registered values
+        for out_value in self.outputs:
+            if out_value.id not in self._values:
+                msg = f"graph output {out_value.id!r}: not registered in graph"
+                raise ValueError(msg)
+
+        # 7. GRAPH_INPUT values must appear in graph.inputs
+        inputs_set = {id(v) for v in self.inputs}
+        for value in self._values.values():
+            if value.kind == ValueKind.GRAPH_INPUT and id(value) not in inputs_set:
+                msg = f"value {value.id!r} (kind=GRAPH_INPUT): input not in graph.inputs"
+                raise ValueError(msg)
+
+        # 8. INITIALIZER values must appear in graph.initializers
+        initializers_set = {id(v) for v in self.initializers}
+        for value in self._values.values():
+            if value.kind == ValueKind.INITIALIZER and id(value) not in initializers_set:
+                msg = f"value {value.id!r} (kind=INITIALIZER): initializer not in graph.initializers"
+                raise ValueError(msg)
