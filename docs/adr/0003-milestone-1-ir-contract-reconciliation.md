@@ -54,8 +54,7 @@ shape rather than expanding IR scope.
 
 - ProtoFX gives up a stronger always-sorted `graph.nodes` contract for Milestone 1.
 - Provenance remains intentionally minimal, which may limit diagnostics until later milestones expand it.
-- The importer must still be updated to enforce the documented validation boundary if the current code path
-  does not already do so.
+- The importer required a follow-up update to enforce the documented validation boundary at the return edge.
 
 ## Alternatives Considered
 
@@ -72,4 +71,3 @@ shape rather than expanding IR scope.
 - `docs/dev/ir/invariants.md`
 - `docs/dev/ir/contracts.md`
 - `docs/ROADMAP.md`
-- `docs/WORKBOARD.md`

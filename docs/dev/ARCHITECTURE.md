@@ -22,14 +22,14 @@ not collapse into a single document.
 | `docs/adr/` | Records accepted architecture decisions and their rationale | Source of truth for structural decisions |
 | `docs/dev/` | Records technical specifications derived from accepted decisions | Source of truth for implementation-facing contracts |
 | `docs/ROADMAP.md` | Records milestones, priorities, and project-level sequencing | Source of truth for planned project scope |
-| `docs/WORKBOARD.md` | User-maintained execution checklist for directing agents | Convenience only; not authoritative for architecture |
+| Temporary workboard (when present) | User-maintained execution checklist for directing agents | Convenience only; not authoritative for architecture |
 
 When a document category disagrees with another, the precedence is:
 
 1. ADRs for architectural decisions.
 2. Development specifications for detailed contracts.
 3. Roadmap for milestone priority.
-4. Workboard for temporary execution guidance.
+4. Temporary workboard guidance, if a workboard exists.
 
 ## Directory Structure
 

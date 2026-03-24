@@ -18,14 +18,14 @@ Milestone 1 contract alignment is recorded in `docs/adr/0003-milestone-1-ir-cont
 
 | Status | Item |
 |--------|------|
-| 📋 | Thin normalized IR (`ir.Graph`, `ir.Node`, `ir.Value`, `ir.TensorType`) |
-| 📋 | Refactor current frozen `Node` / `Value` bootstrap into graph-owned mutable IR |
-| 📋 | Establish ADR-centered documentation and specification structure |
-| 📋 | ONNX importer (`onnx.ModelProto` → IR) |
-| 📋 | IR validation and normalization boundary (importer returns `graph.validate()`-clean IR) |
-| 📋 | `torch.fx` emitter (IR → `GraphModule`) |
-| 📋 | Op handler registry (`@register_op` decorator) |
-| 📋 | Basic test infrastructure (`tests/ops/` fixtures) |
+| ✅ | Thin normalized IR (`ir.Graph`, `ir.Node`, `ir.Value`, `ir.TensorType`) |
+| ✅ | Refactor current frozen `Node` / `Value` bootstrap into graph-owned mutable IR |
+| ✅ | Establish ADR-centered documentation and specification structure |
+| ✅ | ONNX importer (`onnx.ModelProto` → IR) |
+| ✅ | IR validation and normalization boundary (importer returns `graph.validate()`-clean IR) |
+| ✅ | `torch.fx` emitter (IR → `GraphModule`) |
+| ✅ | Op handler registry (`@register_op` decorator) |
+| ✅ | Basic test infrastructure (`tests/ops/` fixtures) |
 | 📋 | CI setup (lint, test) |
 
 ---
@@ -36,7 +36,7 @@ Handlers for the most common ONNX ops to support real-world models.
 
 | Status | Item |
 |--------|------|
-| 📋 | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, ...) |
+| 🚧 | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, ...) |
 | 📋 | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, ...) |
 | 📋 | Reduction ops (ReduceMean, ReduceSum, ReduceMax, ...) |
 | 📋 | Linear algebra (MatMul, Gemm) |

@@ -18,8 +18,8 @@ ProtoFX adopts an ADR-centered documentation system.
 - `docs/adr/` records accepted architecture decisions and their rationale.
 - `docs/dev/` records technical specifications derived from accepted decisions.
 - `docs/ROADMAP.md` records milestones and project-level priorities, not decision history.
-- `docs/WORKBOARD.md` is reserved for user-maintained execution guidance and is not authoritative for
-  architecture decisions.
+- A temporary workboard may be used for user-maintained execution guidance, but it is not authoritative for
+  architecture decisions and does not need to exist as a standing document.
 
 This model intentionally separates decision records from implementation-facing specifications.
 
@@ -49,4 +49,3 @@ This model intentionally separates decision records from implementation-facing s
 - `docs/dev/ARCHITECTURE.md`
 - `docs/dev/IR.md`
 - `docs/ROADMAP.md`
-- `docs/WORKBOARD.md`
