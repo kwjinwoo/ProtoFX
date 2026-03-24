@@ -11,6 +11,7 @@ import onnx
 
 from protofx.ir.dim import Dim
 from protofx.ir.graph import Graph
+from protofx.ir.node import AttributeValue
 from protofx.ir.shape import Shape
 from protofx.ir.tensor_type import TensorType
 from protofx.utils.dtype import onnx_dtype_to_ir
@@ -70,6 +71,45 @@ def _tensor_proto_to_tensor_type(tp: onnx.TensorProto) -> TensorType:
     dtype = onnx_dtype_to_ir(tp.data_type)
     shape: Shape = tuple(int(d) for d in tp.dims)
     return TensorType(dtype=dtype, shape=shape)
+
+
+# ------------------------------------------------------------------
+# Attribute normalization
+# ------------------------------------------------------------------
+
+
+def _normalize_attribute(attr: onnx.AttributeProto) -> AttributeValue:
+    """Convert an ONNX ``AttributeProto`` to a Python-native ``AttributeValue``.
+
+    String attributes are kept as raw ``bytes`` (ONNX stores strings as bytes
+    in protobuf). Repeated string attributes produce ``list[bytes]``.
+
+    Args:
+        attr: The ONNX attribute to normalize.
+
+    Returns:
+        A Python-native value matching the ``AttributeValue`` type alias.
+
+    Raises:
+        NotImplementedError: For TENSOR, GRAPH, and other unsupported types.
+    """
+    match attr.type:
+        case onnx.AttributeProto.INT:
+            return int(attr.i)
+        case onnx.AttributeProto.FLOAT:
+            return float(attr.f)
+        case onnx.AttributeProto.STRING:
+            return bytes(attr.s)
+        case onnx.AttributeProto.INTS:
+            return [int(v) for v in attr.ints]
+        case onnx.AttributeProto.FLOATS:
+            return [float(v) for v in attr.floats]
+        case onnx.AttributeProto.STRINGS:
+            return [bytes(s) for s in attr.strings]
+        case _:
+            type_name = onnx.AttributeProto.AttributeType.Name(attr.type)
+            msg = f"unsupported ONNX attribute type: {type_name}"
+            raise NotImplementedError(msg)
 
 
 # ------------------------------------------------------------------
