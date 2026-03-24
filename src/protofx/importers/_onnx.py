@@ -14,6 +14,7 @@ from protofx.ir.graph import Graph
 from protofx.ir.node import AttributeValue
 from protofx.ir.shape import Shape
 from protofx.ir.tensor_type import TensorType
+from protofx.ir.value import Value
 from protofx.utils.dtype import onnx_dtype_to_ir
 
 # ------------------------------------------------------------------
@@ -162,6 +163,84 @@ def _import_inputs(
         graph.add_input(tensor_type=tt, name=vi.name)
 
 
+def _build_value_info_map(graph_proto: onnx.GraphProto) -> dict[str, onnx.TypeProto]:
+    """Build a name-to-TypeProto map from value_info and graph outputs.
+
+    Args:
+        graph_proto: The source ONNX graph.
+
+    Returns:
+        A dict mapping value names to their ONNX ``TypeProto``.
+    """
+    vi_map: dict[str, onnx.TypeProto] = {}
+    for vi in graph_proto.value_info:
+        vi_map[vi.name] = vi.type
+    for vi in graph_proto.output:
+        vi_map[vi.name] = vi.type
+    return vi_map
+
+
+def _import_nodes(
+    graph: Graph,
+    graph_proto: onnx.GraphProto,
+    value_registry: dict[str, Value],
+    vi_map: dict[str, onnx.TypeProto],
+) -> None:
+    """Import ONNX nodes into the IR graph with use-def wiring.
+
+    For each ONNX node, resolves input Values from the registry, creates
+    output Values with type info from ``vi_map``, and wires use-def links
+    via ``graph.make_node()``.
+
+    Empty input names are mapped to ``SENTINEL`` values (omitted optionals).
+
+    Args:
+        graph: The IR graph being built.
+        graph_proto: The source ONNX graph.
+        value_registry: Mutable name-to-Value mapping for use-def resolution.
+        vi_map: Name-to-TypeProto mapping for output type resolution.
+    """
+    for node_proto in graph_proto.node:
+        # Resolve inputs
+        inputs: list[Value] = []
+        for input_name in node_proto.input:
+            if not input_name:
+                inputs.append(graph.add_sentinel())
+            else:
+                inputs.append(value_registry[input_name])
+
+        # Resolve output types
+        output_types: list[TensorType] = []
+        output_names: list[str | None] = []
+        for output_name in node_proto.output:
+            if output_name in vi_map:
+                output_types.append(_parse_tensor_type(vi_map[output_name]))
+            else:
+                output_types.append(TensorType(dtype=None, shape=None))
+            output_names.append(output_name or None)
+
+        # Normalize attributes
+        attributes: dict[str, AttributeValue] = {}
+        for attr in node_proto.attribute:
+            attributes[attr.name] = _normalize_attribute(attr)
+
+        # Create ir.Node
+        ir_node = graph.make_node(
+            op_type=node_proto.op_type,
+            inputs=inputs,
+            output_types=output_types,
+            domain=node_proto.domain,
+            attributes=attributes,
+            name=node_proto.name or None,
+            output_names=output_names,
+        )
+
+        # Register outputs in the value registry
+        for out_value in ir_node.outputs:
+            if out_value.name:
+                value_registry[out_value.name] = out_value
+
+
 # ------------------------------------------------------------------
 # Public entry point
 # ------------------------------------------------------------------
@@ -188,5 +267,25 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
 
     # Phase 2: graph inputs (filtered against initializer names)
     _import_inputs(graph, graph_proto, init_names)
+
+    # Phase 3: build value registry from inputs + initializers
+    value_registry: dict[str, Value] = {}
+    for v in graph.inputs:
+        if v.name:
+            value_registry[v.name] = v
+    for v in graph.initializers:
+        if v.name:
+            value_registry[v.name] = v
+
+    # Phase 4: import nodes
+    vi_map = _build_value_info_map(graph_proto)
+    _import_nodes(graph, graph_proto, value_registry, vi_map)
+
+    # Phase 5: set graph outputs
+    graph_outputs: list[Value] = []
+    for out_vi in graph_proto.output:
+        if out_vi.name in value_registry:
+            graph_outputs.append(value_registry[out_vi.name])
+    graph.set_graph_outputs(graph_outputs)
 
     return graph
