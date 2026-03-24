@@ -360,3 +360,191 @@ class TestNormalizeAttributeUnsupported:
             raise AssertionError("expected NotImplementedError")
         except NotImplementedError:
             pass
+
+
+# ── Node Import and Output Type Resolution ────────────────────────────
+
+
+class TestImportNodes:
+    """Verify that ONNX nodes are correctly imported into ir.Graph."""
+
+    def test_single_relu_op_type(self) -> None:
+        """A single Relu node should have op_type 'Relu'."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert len(g.nodes) == 1
+        assert g.nodes[0].op_type == "Relu"
+
+    def test_single_relu_inputs_connected(self) -> None:
+        """Relu node inputs should reference the graph input Value."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        node = g.nodes[0]
+        assert len(node.inputs) == 1
+        assert node.inputs[0] is g.inputs[0]
+
+    def test_single_relu_outputs_count(self) -> None:
+        """Relu should produce one output Value."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert len(g.nodes[0].outputs) == 1
+
+    def test_node_output_name_preserved(self) -> None:
+        """ONNX output name should be preserved on the Value."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert g.nodes[0].outputs[0].name == "Y"
+
+    def test_two_node_chain(self) -> None:
+        """Two chained nodes should share the intermediate Value."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Z = helper.make_tensor_value_info("Z", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        sigmoid = helper.make_node("Sigmoid", ["Y"], ["Z"])
+        model = _make_model([X], outputs=[Z], nodes=[relu, sigmoid])
+
+        g = import_model(model)
+
+        assert len(g.nodes) == 2
+        # sigmoid's input should be relu's output
+        assert g.nodes[1].inputs[0] is g.nodes[0].outputs[0]
+
+    def test_node_with_initializer_input(self) -> None:
+        """Nodes should be able to reference initializer Values as inputs."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4])
+        W_data = np.ones((3, 4), dtype=np.float32)
+        W = onnx.numpy_helper.from_array(W_data, name="W")
+        matmul = helper.make_node("MatMul", ["X", "W"], ["Y"])
+        model = _make_model([X], outputs=[Y], initializers=[W], nodes=[matmul])
+
+        g = import_model(model)
+
+        node = g.nodes[0]
+        assert len(node.inputs) == 2
+        assert node.inputs[0] is g.inputs[0]
+        assert node.inputs[1] is g.initializers[0]
+
+    def test_node_attributes_normalized(self) -> None:
+        """Node attributes should be Python-native values."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 4, 4])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 4, 4])
+        pad = helper.make_node("Pad", ["X"], ["Y"], mode="constant")
+        model = _make_model([X], outputs=[Y], nodes=[pad])
+
+        g = import_model(model)
+
+        assert "mode" in g.nodes[0].attributes
+        assert g.nodes[0].attributes["mode"] == b"constant"
+
+    def test_node_domain_default(self) -> None:
+        """Default domain should be empty string."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert g.nodes[0].domain == ""
+
+    def test_node_onnx_name_preserved(self) -> None:
+        """ONNX node name should be preserved."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"], name="my_relu")
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert g.nodes[0].name == "my_relu"
+
+
+class TestOutputTypeResolution:
+    """Verify output type resolution from value_info and graph outputs."""
+
+    def test_output_dtype_from_value_info(self) -> None:
+        """Output dtype should come from ONNX value_info when available."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert g.nodes[0].outputs[0].tensor_type.dtype == DType.FLOAT32
+
+    def test_output_shape_from_value_info(self) -> None:
+        """Output shape should come from ONNX value_info when available."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert g.nodes[0].outputs[0].tensor_type.shape == (2, 3)
+
+    def test_unknown_output_type_when_no_info(self) -> None:
+        """Outputs without value_info should get dtype=None, shape=None."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        # Intermediate value "Y" has no value_info, only graph output "Z" does
+        Y_out = helper.make_tensor_value_info("Z", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        sigmoid = helper.make_node("Sigmoid", ["Y"], ["Z"])
+        model = _make_model([X], outputs=[Y_out], nodes=[relu, sigmoid])
+
+        g = import_model(model)
+
+        # relu output "Y" has no explicit value_info -> unknown type
+        relu_out = g.nodes[0].outputs[0]
+        assert relu_out.tensor_type.dtype is None
+        assert relu_out.tensor_type.shape is None
+
+    def test_graph_outputs_set(self) -> None:
+        """Graph outputs should be set after node import."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        relu = helper.make_node("Relu", ["X"], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[relu])
+
+        g = import_model(model)
+
+        assert len(g.outputs) == 1
+        assert g.outputs[0] is g.nodes[0].outputs[0]
+
+    def test_empty_input_becomes_sentinel(self) -> None:
+        """An empty input name in ONNX should become a SENTINEL value."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+        # Pad has optional "constant_value" input; use "" to omit it
+        pad_node = helper.make_node("Pad", ["X", "", ""], ["Y"])
+        model = _make_model([X], outputs=[Y], nodes=[pad_node])
+
+        g = import_model(model)
+
+        node = g.nodes[0]
+        assert len(node.inputs) == 3
+        assert node.inputs[0] is g.inputs[0]
+        assert node.inputs[1].kind == ValueKind.SENTINEL
+        assert node.inputs[2].kind == ValueKind.SENTINEL
