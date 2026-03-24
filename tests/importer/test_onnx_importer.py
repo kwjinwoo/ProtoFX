@@ -754,3 +754,34 @@ class TestImportModelEntryPoint:
         custom_out = g.nodes[0].outputs[0]
         assert custom_out.tensor_type.dtype is None
         assert custom_out.tensor_type.shape is None
+
+
+# ── Validate Contract ─────────────────────────────────────────────────
+
+
+class TestImportModelValidateContract:
+    """Verify import_model calls graph.validate() before returning (contracts.md fail-fast)."""
+
+    def test_validate_is_called(self) -> None:
+        """import_model must call graph.validate() before returning."""
+        from unittest.mock import patch
+
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        model = _make_model([X])
+
+        with patch("protofx.ir.graph.Graph.validate") as mock_validate:
+            import_model(model)
+            mock_validate.assert_called_once()
+
+    def test_validate_error_propagates(self) -> None:
+        """If graph.validate() raises ValueError, import_model must propagate it."""
+        from unittest.mock import patch
+
+        import pytest
+
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+        model = _make_model([X])
+
+        with patch("protofx.ir.graph.Graph.validate", side_effect=ValueError("invariant violated")):
+            with pytest.raises(ValueError, match="invariant violated"):
+                import_model(model)
