@@ -1,5 +1,6 @@
 """Tests for protofx.ir.Graph — graph-owned mutable IR."""
 
+import numpy as np
 import pytest
 
 from protofx.ir import DType, TensorType
@@ -627,3 +628,289 @@ class TestGraphValidate:
         g.set_node_inputs(n1, [n2.outputs[0]])
         with pytest.raises(ValueError, match="cycle"):
             g.validate()
+
+
+# ---------------------------------------------------------------------------
+# Graph.initializers field
+# ---------------------------------------------------------------------------
+
+
+class TestGraphInitializersField:
+    """Verify Graph exposes a public ``initializers`` list."""
+
+    def test_initializers_default_empty(self) -> None:
+        """A new Graph has an empty initializers list."""
+        g = Graph()
+        assert g.initializers == []
+
+    def test_initializers_is_list(self) -> None:
+        """Graph.initializers is a list."""
+        g = Graph()
+        assert isinstance(g.initializers, list)
+
+
+# ---------------------------------------------------------------------------
+# Graph.add_sentinel
+# ---------------------------------------------------------------------------
+
+
+class TestGraphAddSentinel:
+    """Verify Graph.add_sentinel creates a SENTINEL Value."""
+
+    def test_returns_value(self) -> None:
+        """add_sentinel must return a Value."""
+        g = Graph()
+        v = g.add_sentinel()
+        assert v is not None
+
+    def test_kind_is_sentinel(self) -> None:
+        """Returned Value must have SENTINEL kind."""
+        g = Graph()
+        v = g.add_sentinel()
+        assert v.kind == ValueKind.SENTINEL
+
+    def test_tensor_type_unknown(self) -> None:
+        """Sentinel has unknown tensor metadata (dtype=None, shape=None)."""
+        g = Graph()
+        v = g.add_sentinel()
+        assert v.tensor_type.dtype is None
+        assert v.tensor_type.shape is None
+
+    def test_producer_is_none(self) -> None:
+        """Sentinel values have no producer."""
+        g = Graph()
+        v = g.add_sentinel()
+        assert v.producer is None
+
+    def test_data_is_none(self) -> None:
+        """Sentinel values carry no data payload."""
+        g = Graph()
+        v = g.add_sentinel()
+        assert v.data is None
+
+    def test_registered_in_values(self) -> None:
+        """Sentinel is registered in the graph's value registry."""
+        g = Graph()
+        g.add_sentinel()
+        assert g.value_count == 1
+
+    def test_not_in_inputs(self) -> None:
+        """Sentinel does not appear in graph.inputs."""
+        g = Graph()
+        g.add_sentinel()
+        assert g.inputs == []
+
+    def test_not_in_initializers(self) -> None:
+        """Sentinel does not appear in graph.initializers."""
+        g = Graph()
+        g.add_sentinel()
+        assert g.initializers == []
+
+    def test_each_call_creates_new_instance(self) -> None:
+        """Each add_sentinel call produces a distinct Value."""
+        g = Graph()
+        s1 = g.add_sentinel()
+        s2 = g.add_sentinel()
+        assert s1 is not s2
+        assert s1.id != s2.id
+
+    def test_auto_id(self) -> None:
+        """Sentinel gets an auto-generated id."""
+        g = Graph()
+        v = g.add_sentinel()
+        assert isinstance(v.id, str)
+        assert len(v.id) > 0
+
+
+# ---------------------------------------------------------------------------
+# Graph.add_constant
+# ---------------------------------------------------------------------------
+
+
+class TestGraphAddConstant:
+    """Verify Graph.add_constant creates a CONSTANT Value with data."""
+
+    def test_returns_value(self) -> None:
+        """add_constant must return a Value."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        v = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        assert v is not None
+
+    def test_kind_is_constant(self) -> None:
+        """Returned Value must have CONSTANT kind."""
+        g = Graph()
+        arr = np.array([1.0, 2.0], dtype=np.float32)
+        v = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), data=arr)
+        assert v.kind == ValueKind.CONSTANT
+
+    def test_data_stored(self) -> None:
+        """The numpy array is stored on the Value."""
+        g = Graph()
+        arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        v = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 2)), data=arr)
+        assert v.data is arr
+
+    def test_tensor_type_stored(self) -> None:
+        """The tensor type is stored on the Value."""
+        g = Graph()
+        arr = np.array([0.5], dtype=np.float32)
+        tt = TensorType(dtype=DType.FLOAT32, shape=(1,))
+        v = g.add_constant(tensor_type=tt, data=arr)
+        assert v.tensor_type is tt
+
+    def test_producer_is_none(self) -> None:
+        """Constant values created by add_constant have no producer."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        v = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        assert v.producer is None
+
+    def test_name_preserved(self) -> None:
+        """Optional name is stored on the Value."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        v = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr, name="const_0")
+        assert v.name == "const_0"
+
+    def test_registered_in_values(self) -> None:
+        """Constant is registered in the graph's value registry."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        assert g.value_count == 1
+
+    def test_not_in_inputs(self) -> None:
+        """Constant does not appear in graph.inputs."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        assert g.inputs == []
+
+    def test_not_in_initializers(self) -> None:
+        """Constant does not appear in graph.initializers."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        assert g.initializers == []
+
+    def test_auto_id(self) -> None:
+        """Constant gets an auto-generated id."""
+        g = Graph()
+        arr = np.array([1.0], dtype=np.float32)
+        v = g.add_constant(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1,)), data=arr)
+        assert isinstance(v.id, str)
+        assert len(v.id) > 0
+
+
+# ---------------------------------------------------------------------------
+# Graph.add_initializer
+# ---------------------------------------------------------------------------
+
+
+class TestGraphAddInitializer:
+    """Verify Graph.add_initializer creates an INITIALIZER Value with data."""
+
+    def test_returns_value(self) -> None:
+        """add_initializer must return a Value."""
+        g = Graph()
+        arr = np.zeros((64, 3, 7, 7), dtype=np.float32)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(64, 3, 7, 7)), data=arr)
+        assert v is not None
+
+    def test_kind_is_initializer(self) -> None:
+        """Returned Value must have INITIALIZER kind."""
+        g = Graph()
+        arr = np.zeros((10,), dtype=np.float32)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(10,)), data=arr)
+        assert v.kind == ValueKind.INITIALIZER
+
+    def test_data_stored(self) -> None:
+        """The numpy array is stored on the Value."""
+        g = Graph()
+        arr = np.ones((3, 3), dtype=np.float64)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT64, shape=(3, 3)), data=arr)
+        assert v.data is arr
+
+    def test_tensor_type_stored(self) -> None:
+        """The tensor type is stored on the Value."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        tt = TensorType(dtype=DType.FLOAT32, shape=(5,))
+        v = g.add_initializer(tensor_type=tt, data=arr)
+        assert v.tensor_type is tt
+
+    def test_producer_is_none(self) -> None:
+        """Initializer values have no producer."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        assert v.producer is None
+
+    def test_name_preserved(self) -> None:
+        """Optional name is stored on the Value."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr, name="weight_0")
+        assert v.name == "weight_0"
+
+    def test_registered_in_values(self) -> None:
+        """Initializer is registered in the graph's value registry."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        assert g.value_count == 1
+
+    def test_appended_to_initializers(self) -> None:
+        """Initializer is appended to graph.initializers."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        assert v in g.initializers
+
+    def test_not_in_inputs(self) -> None:
+        """Initializer does not appear in graph.inputs."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        assert g.inputs == []
+
+    def test_multiple_initializers(self) -> None:
+        """Multiple initializers can be added."""
+        g = Graph()
+        w = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(64, 3, 7, 7)),
+            data=np.zeros((64, 3, 7, 7), dtype=np.float32),
+            name="weight",
+        )
+        b = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(64,)),
+            data=np.zeros((64,), dtype=np.float32),
+            name="bias",
+        )
+        assert len(g.initializers) == 2
+        assert g.initializers[0] is w
+        assert g.initializers[1] is b
+
+    def test_auto_id(self) -> None:
+        """Initializer gets an auto-generated id."""
+        g = Graph()
+        arr = np.zeros((5,), dtype=np.float32)
+        v = g.add_initializer(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), data=arr)
+        assert isinstance(v.id, str)
+        assert len(v.id) > 0
+
+    def test_initializer_usable_as_node_input(self) -> None:
+        """An initializer Value can be used as a node input."""
+        g = Graph()
+        inp = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)))
+        w = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 4)),
+            data=np.zeros((3, 4), dtype=np.float32),
+        )
+        node = g.make_node(
+            op_type="MatMul",
+            inputs=[inp, w],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 4))],
+        )
+        assert w.users[0] == (node, 1)
