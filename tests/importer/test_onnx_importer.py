@@ -7,6 +7,7 @@ import onnx
 from onnx import TensorProto, helper
 
 from protofx.importers import import_model
+from protofx.importers._onnx import _normalize_attribute
 from protofx.ir import DType, ValueKind
 
 
@@ -242,3 +243,120 @@ class TestInitializerInputDedup:
         assert len(g.initializers) == 2
         names = {v.name for v in g.initializers}
         assert names == {"W", "B"}
+
+
+# ── Attribute Normalization ───────────────────────────────────────────
+
+
+class TestNormalizeAttributeInt:
+    """Verify INT attribute normalization."""
+
+    def test_int_value(self) -> None:
+        """ONNX INT attribute should produce a Python int."""
+        attr = helper.make_attribute("axis", 1)
+        assert _normalize_attribute(attr) == 1
+
+    def test_int_type(self) -> None:
+        """Result must be a plain int."""
+        attr = helper.make_attribute("axis", 2)
+        assert isinstance(_normalize_attribute(attr), int)
+
+    def test_negative_int(self) -> None:
+        """Negative ints should be preserved."""
+        attr = helper.make_attribute("axis", -1)
+        assert _normalize_attribute(attr) == -1
+
+
+class TestNormalizeAttributeFloat:
+    """Verify FLOAT attribute normalization."""
+
+    def test_float_value(self) -> None:
+        """ONNX FLOAT attribute should produce a Python float."""
+        attr = helper.make_attribute("alpha", 0.5)
+        assert _normalize_attribute(attr) == 0.5
+
+    def test_float_type(self) -> None:
+        """Result must be a plain float."""
+        attr = helper.make_attribute("alpha", 3.14)
+        assert isinstance(_normalize_attribute(attr), float)
+
+
+class TestNormalizeAttributeString:
+    """Verify STRING attribute normalization to bytes."""
+
+    def test_string_value(self) -> None:
+        """ONNX STRING attribute should produce Python bytes."""
+        attr = helper.make_attribute("mode", b"constant")
+        assert _normalize_attribute(attr) == b"constant"
+
+    def test_string_type(self) -> None:
+        """Result must be bytes."""
+        attr = helper.make_attribute("mode", b"reflect")
+        assert isinstance(_normalize_attribute(attr), bytes)
+
+    def test_binary_payload(self) -> None:
+        """Raw binary content should be preserved as bytes."""
+        attr = helper.make_attribute("raw", b"\x00\x01\xff")
+        assert _normalize_attribute(attr) == b"\x00\x01\xff"
+
+
+class TestNormalizeAttributeInts:
+    """Verify INTS attribute normalization."""
+
+    def test_ints_value(self) -> None:
+        """ONNX INTS attribute should produce a Python list[int]."""
+        attr = helper.make_attribute("pads", [1, 2, 3, 4])
+        assert _normalize_attribute(attr) == [1, 2, 3, 4]
+
+    def test_ints_type(self) -> None:
+        """Each element must be int."""
+        attr = helper.make_attribute("pads", [0, 1])
+        result = _normalize_attribute(attr)
+        assert isinstance(result, list)
+        assert all(isinstance(v, int) for v in result)
+
+
+class TestNormalizeAttributeFloats:
+    """Verify FLOATS attribute normalization."""
+
+    def test_floats_value(self) -> None:
+        """ONNX FLOATS attribute should produce a Python list[float]."""
+        attr = helper.make_attribute("scales", [1.0, 2.0, 3.0])
+        assert _normalize_attribute(attr) == [1.0, 2.0, 3.0]
+
+    def test_floats_type(self) -> None:
+        """Each element must be float."""
+        attr = helper.make_attribute("scales", [0.5, 1.5])
+        result = _normalize_attribute(attr)
+        assert isinstance(result, list)
+        assert all(isinstance(v, float) for v in result)
+
+
+class TestNormalizeAttributeStrings:
+    """Verify STRINGS attribute normalization to list[bytes]."""
+
+    def test_strings_value(self) -> None:
+        """ONNX STRINGS attribute should produce a Python list[bytes]."""
+        attr = helper.make_attribute("names", [b"alpha", b"beta"])
+        assert _normalize_attribute(attr) == [b"alpha", b"beta"]
+
+    def test_strings_type(self) -> None:
+        """Each element must be bytes."""
+        attr = helper.make_attribute("names", [b"x", b"y"])
+        result = _normalize_attribute(attr)
+        assert isinstance(result, list)
+        assert all(isinstance(v, bytes) for v in result)
+
+
+class TestNormalizeAttributeUnsupported:
+    """Verify unsupported attribute types raise NotImplementedError."""
+
+    def test_tensor_raises(self) -> None:
+        """TENSOR attributes are not supported in this slice."""
+        tensor = onnx.numpy_helper.from_array(np.zeros((2,), dtype=np.float32))
+        attr = helper.make_attribute("value", tensor)
+        try:
+            _normalize_attribute(attr)
+            raise AssertionError("expected NotImplementedError")
+        except NotImplementedError:
+            pass
