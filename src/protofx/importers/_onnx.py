@@ -180,6 +180,40 @@ def _build_value_info_map(graph_proto: onnx.GraphProto) -> dict[str, onnx.TypePr
     return vi_map
 
 
+def _inline_constant(
+    graph: Graph,
+    node_proto: onnx.NodeProto,
+    value_registry: dict[str, Value],
+) -> None:
+    """Inline an ONNX Constant op as a ``CONSTANT`` value (no ir.Node created).
+
+    Extracts the ``value`` TENSOR attribute, converts it to a numpy array,
+    and creates a ``CONSTANT`` ir.Value registered in the value registry.
+
+    Args:
+        graph: The IR graph being built.
+        node_proto: The ONNX Constant node proto.
+        value_registry: Mutable name-to-Value mapping.
+    """
+    tensor_attr: onnx.TensorProto | None = None
+    for attr in node_proto.attribute:
+        if attr.name == "value" and attr.type == onnx.AttributeProto.TENSOR:
+            tensor_attr = attr.t
+            break
+
+    if tensor_attr is None:
+        msg = f"Constant node {node_proto.name!r} missing 'value' TENSOR attribute"
+        raise ValueError(msg)
+
+    data = onnx.numpy_helper.to_array(tensor_attr)
+    tt = _tensor_proto_to_tensor_type(tensor_attr)
+    output_name = node_proto.output[0] if node_proto.output else None
+
+    const_value = graph.add_constant(tensor_type=tt, data=data, name=output_name)
+    if output_name:
+        value_registry[output_name] = const_value
+
+
 def _import_nodes(
     graph: Graph,
     graph_proto: onnx.GraphProto,
@@ -201,6 +235,11 @@ def _import_nodes(
         vi_map: Name-to-TypeProto mapping for output type resolution.
     """
     for node_proto in graph_proto.node:
+        # Handle Constant op inlining
+        if node_proto.op_type == "Constant" and node_proto.domain in ("", "ai.onnx"):
+            _inline_constant(graph, node_proto, value_registry)
+            continue
+
         # Resolve inputs
         inputs: list[Value] = []
         for input_name in node_proto.input:
