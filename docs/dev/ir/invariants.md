@@ -33,9 +33,11 @@ not depend on them.
 
 ### 4. Single Producer Invariant
 
-Every non-input, non-sentinel `Value` must have exactly one producer.
+Every `Value` whose kind is `NODE_OUTPUT` must have exactly one producer.
 
-Expected exceptions are graph inputs and other graph-boundary values created by normalization rules.
+Values whose kind is `GRAPH_INPUT`, `INITIALIZER`, `CONSTANT`, or `SENTINEL` must not have a producer
+(`producer=None`). The importer inlines ONNX `Constant` ops into producerless `CONSTANT` values;
+constants that remain as nodes produce `NODE_OUTPUT` values instead.
 
 ### 5. Ordered Inputs and Outputs
 

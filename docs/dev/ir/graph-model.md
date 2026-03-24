@@ -50,6 +50,7 @@ Expected state:
 |-------|------|-------------|
 | `inputs` | `list[Value]` | Ordered graph inputs |
 | `outputs` | `list[Value]` | Ordered graph outputs |
+| `initializers` | `list[Value]` | Ordered graph initializers |
 | `nodes` | `list[Node]` | Nodes in topological order |
 
 Internal registries and auto-ID counters remain private implementation details.
@@ -57,7 +58,15 @@ Internal registries and auto-ID counters remain private implementation details.
 ## Construction APIs
 
 - `add_input(tensor_type, *, name=None)`
+- `add_sentinel()`
+- `add_constant(tensor_type, data, *, name=None)`
+- `add_initializer(tensor_type, data, *, name=None)`
 - `make_node(op_type, inputs, output_types, *, domain="", opset_version=None, attributes=None, name=None)`
+
+`add_sentinel` creates a `SENTINEL` value with unknown tensor metadata and no data payload.
+`add_constant` creates a `CONSTANT` value with a `numpy.ndarray` payload (no producer).
+`add_initializer` creates an `INITIALIZER` value with a `numpy.ndarray` payload and appends it to
+`graph.initializers`.
 
 These APIs create values and nodes as a single graph-level operation so producer and user links stay
 consistent.
@@ -76,4 +85,6 @@ All graph mutations go through `Graph` methods.
 - `topological_sort()`
 - `validate()`
 
-Validation must enforce graph well-formedness, use-def consistency, input/output ordering, and acyclicity.
+Validation must enforce graph well-formedness, use-def consistency, input/output ordering, acyclicity,
+kind-specific producer rules, graph output registration, and ownership consistency for `GRAPH_INPUT` and
+`INITIALIZER` values.

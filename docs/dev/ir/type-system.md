@@ -46,8 +46,9 @@ Expected field shape:
 | `id` | `str` | Stable internal identifier |
 | `kind` | `ValueKind` | Origin classification |
 | `tensor_type` | `TensorType` | Tensor metadata |
-| `name` | `str | None` | Original ONNX name for source provenance |
-| `producer` | `Node | None` | Producing node, graph-managed |
+| `name` | `str \| None` | Original ONNX name for source provenance |
+| `data` | `numpy.ndarray \| None` | Tensor payload for constants and initializers |
+| `producer` | `Node \| None` | Producing node, graph-managed |
 | `users` | `list[tuple[Node, int]]` | Consumer and slot pairs, graph-managed |
 
 `ValueKind` should distinguish at least:
