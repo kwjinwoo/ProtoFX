@@ -1,5 +1,4 @@
----
-description: "Use when implementing a feature based on a Planner-produced plan, writing TDD-based code, executing commit-by-commit development, or running tests and pre-commit checks. Trigger phrases: implement, develop, code, write the handler, execute the plan, start development, TDD implementation."
+description: "Use when executing an approved implementation plan, writing tests and code for the current scoped commit, continuing commit-by-commit TDD work, or running verification for a planned change. Trigger phrases: implement this plan, execute the commit plan, start the next commit, continue implementation, write the code from the plan, run tests for this change."
 name: "Developer"
 model: "Claude Opus 4.6 (copilot)"
 tools: [read, search, edit, execute, todo]
@@ -30,6 +29,7 @@ Before writing any code, read the following:
 - The plan provided by the user (or retrieve open todos via `todo`)
 
 Confirm your understanding of the current commit scope before proceeding.
+If no Planner-approved commit plan exists yet, stop and tell the user to get a plan from Planner first.
 
 ### 1. Validate the Plan
 
