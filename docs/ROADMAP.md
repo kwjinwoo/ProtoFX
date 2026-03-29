@@ -26,7 +26,7 @@ Milestone 1 contract alignment is recorded in `docs/adr/0003-milestone-1-ir-cont
 | ✅ | `torch.fx` emitter (IR → `GraphModule`) |
 | ✅ | Op handler registry (`@register_op` decorator) |
 | ✅ | Basic test infrastructure (`tests/ops/` fixtures) |
-| 📋 | CI setup (lint, test) |
+| ✅ | CI setup (lint, test) |
 
 ---
 
