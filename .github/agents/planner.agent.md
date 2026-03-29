@@ -1,3 +1,4 @@
+---
 description: "Use when producing a commit-granular implementation plan for an already-scoped feature, breaking work into atomic TDD commits, or translating an approved architecture decision into execution steps. Trigger phrases: implementation plan, commit plan, TDD plan, break this into commits, how should I implement, where do I start implementing, feature execution plan."
 name: "Planner"
 model: "Claude Sonnet 4.6 (copilot)"

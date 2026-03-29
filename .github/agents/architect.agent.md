@@ -1,3 +1,4 @@
+---
 description: "Use when discussing system architecture, ADR-level decisions, component boundaries, repository-level roadmap priorities, structural trade-offs, or reviewing/fixing agent definition files under .github/agents. Trigger phrases: architecture, ADR, component boundary, system design, structural decision, roadmap priority, trade-off, refactor architecture, agent definition, .agent.md, agent instructions."
 name: "Architect"
 model: "GPT-5.4 (copilot)"
