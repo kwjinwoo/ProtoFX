@@ -48,12 +48,12 @@ class TestFlattenHandler:
         assert "call_function" in ops
 
     def test_call_function_target(self) -> None:
-        """The call_function target must be torch.flatten."""
+        """The call_function target must be torch.reshape."""
         g = _make_flatten_graph((2, 3, 4), axis=1)
         gm = emit_graph(g)
         call_nodes = [n for n in gm.graph.nodes if n.op == "call_function"]
         assert len(call_nodes) == 1
-        assert call_nodes[0].target is torch.flatten
+        assert call_nodes[0].target is torch.reshape
 
     def test_single_output(self) -> None:
         """Flatten handler must return exactly one FX output node."""
@@ -63,30 +63,30 @@ class TestFlattenHandler:
         assert len(output_node.args[0]) == 1
 
     def test_forward_correctness_axis_1(self) -> None:
-        """Flatten with axis=1 must produce correct results."""
+        """Flatten with axis=1 must produce (batch, features) shape."""
         g = _make_flatten_graph((2, 3, 4), axis=1)
         gm = emit_graph(g)
         x = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)
         (result,) = gm(x)
-        expected = torch.flatten(x, start_dim=1)
+        expected = x.reshape(2, 12)
         assert torch.equal(result, expected)
 
     def test_forward_correctness_axis_0(self) -> None:
-        """Flatten with axis=0 must flatten all dims into (1, N)."""
+        """Flatten with axis=0 must produce (1, N) shape."""
         g = _make_flatten_graph((2, 3, 4), axis=0)
         gm = emit_graph(g)
         x = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)
         (result,) = gm(x)
-        expected = torch.flatten(x, start_dim=0)
+        expected = x.reshape(1, 24)
         assert torch.equal(result, expected)
 
     def test_forward_correctness_axis_2(self) -> None:
-        """Flatten with axis=2 on a 3D tensor must flatten the last dim."""
+        """Flatten with axis=2 on a 3D tensor must produce (6, 4)."""
         g = _make_flatten_graph((2, 3, 4), axis=2)
         gm = emit_graph(g)
         x = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)
         (result,) = gm(x)
-        expected = torch.flatten(x, start_dim=2)
+        expected = x.reshape(6, 4)
         assert torch.equal(result, expected)
 
 
