@@ -37,7 +37,7 @@ Handlers for the most common ONNX ops to support real-world models.
 | Status | Item |
 |--------|------|
 | ✅ | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, Abs, Neg, Exp, Log, Sqrt, Pow) |
-| 📋 | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, ...) |
+| ✅ | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, Concat, Slice, Identity, Cast, Expand, Gather) |
 | 📋 | Reduction ops (ReduceMean, ReduceSum, ReduceMax, ...) |
 | 📋 | Linear algebra (MatMul, Gemm) |
 | 📋 | Convolution (Conv, ConvTranspose) |
@@ -76,6 +76,7 @@ Verify that the output `GraphModule` works correctly with PyTorch tooling.
 
 Ideas not yet scheduled. Discuss with `@Architect` before moving to a milestone.
 
+- Opset ≤12 normalization pass in importer (e.g. Squeeze/Unsqueeze axes attr → input conversion)
 - Control-flow op support (If, Loop, Scan)
 - Dynamic shape / symbolic shape propagation
 - Plugin system for 3rd-party op domains
