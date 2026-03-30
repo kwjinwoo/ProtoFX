@@ -36,7 +36,7 @@ Handlers for the most common ONNX ops to support real-world models.
 
 | Status | Item |
 |--------|------|
-| 🚧 | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, ...) |
+| ✅ | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, Abs, Neg, Exp, Log, Sqrt, Pow) |
 | 📋 | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, ...) |
 | 📋 | Reduction ops (ReduceMean, ReduceSum, ReduceMax, ...) |
 | 📋 | Linear algebra (MatMul, Gemm) |
