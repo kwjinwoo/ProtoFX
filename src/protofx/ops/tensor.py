@@ -320,3 +320,155 @@ def _slice(
         slices[a] = slice(s, e, st)
 
     return [fx_graph.call_function(operator.getitem, args=(args[0], tuple(slices)))]
+
+
+# ---------------------------------------------------------------------------
+# Identity
+# ---------------------------------------------------------------------------
+
+
+@register_op("Identity")
+def _identity(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Pass through the input FX node unchanged for the ONNX Identity op.
+
+    Args:
+        node: The IR Identity node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Identity).
+
+    Returns:
+        A single-element list containing the same input FX node.
+    """
+    return [args[0]]
+
+
+# ---------------------------------------------------------------------------
+# Cast
+# ---------------------------------------------------------------------------
+
+
+@register_op("Cast")
+def _cast(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``Tensor.to(dtype)`` for the ONNX Cast op.
+
+    The target dtype is read from the ``to`` attribute (ONNX dtype int),
+    converted to an IR ``DType``, then mapped to a ``torch.dtype``.
+
+    Args:
+        node: The IR Cast node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Cast).
+
+    Returns:
+        A single-element list containing the cast FX call_method node.
+    """
+    from protofx.ir.dtype import DType
+    from protofx.utils.dtype import ir_dtype_to_torch
+
+    to_attr = node.attributes.get("to")
+    if to_attr is None:
+        msg = "Cast: missing required 'to' attribute"
+        raise NotImplementedError(msg)
+    ir_dtype = DType(int(to_attr))
+    torch_dtype = ir_dtype_to_torch(ir_dtype)
+    if torch_dtype is None:
+        msg = f"Cast: unsupported target dtype {ir_dtype.name}"
+        raise NotImplementedError(msg)
+    return [fx_graph.call_method("to", args=(args[0], torch_dtype))]
+
+
+# ---------------------------------------------------------------------------
+# Expand
+# ---------------------------------------------------------------------------
+
+
+@register_op("Expand")
+def _expand(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.broadcast_to`` for the ONNX Expand op.
+
+    The target shape is statically extracted from the second input Value.
+
+    Args:
+        node: The IR Expand node.
+        args: Two-element list; first is the data FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Expand).
+
+    Returns:
+        A single-element list containing the broadcast FX call_function node.
+    """
+    import torch
+
+    target_shape = _extract_static_int_data(node, 1)
+    return [fx_graph.call_function(torch.broadcast_to, args=(args[0], target_shape))]
+
+
+# ---------------------------------------------------------------------------
+# Gather
+# ---------------------------------------------------------------------------
+
+
+@register_op("Gather")
+def _gather(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.index_select`` for the ONNX Gather op.
+
+    Indices are statically extracted from the second input. For scalar indices,
+    the gathered dimension is squeezed to match ONNX semantics.
+
+    Args:
+        node: The IR Gather node.
+        args: Two-element list; first is the data FX node, second is indices (unused).
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Gather).
+
+    Returns:
+        A single-element list containing the gather FX call_function node.
+    """
+    import torch
+
+    axis = int(node.attributes.get("axis", 0))
+    indices_value = node.inputs[1]
+    if indices_value.data is None:
+        msg = f"Gather: indices input ({indices_value.name or indices_value.id}) has no static data"
+        raise NotImplementedError(msg)
+
+    indices_np = indices_value.data
+    is_scalar = indices_np.ndim == 0
+
+    # Flatten indices to 1D for torch.index_select
+    flat_indices = indices_np.flatten().tolist()
+    idx_tensor = torch.tensor(flat_indices, dtype=torch.long)
+    # Register as buffer for FX graph
+    attr_name = f"_gather_indices_{node.id}"
+    module.register_buffer(attr_name, idx_tensor)
+    idx_node = fx_graph.get_attr(attr_name)
+
+    result = fx_graph.call_function(torch.index_select, args=(args[0], axis, idx_node))
+
+    # Squeeze the axis dim for scalar indices to match ONNX Gather output shape
+    if is_scalar:
+        result = fx_graph.call_function(torch.squeeze, args=(result, axis))
+
+    return [result]
