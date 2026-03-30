@@ -213,3 +213,110 @@ def _unsqueeze(
     for ax in sorted_axes:
         result = fx_graph.call_function(torch.unsqueeze, args=(result, ax))
     return [result]
+
+
+# ---------------------------------------------------------------------------
+# Concat
+# ---------------------------------------------------------------------------
+
+
+@register_op("Concat")
+def _concat(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.cat`` for the ONNX Concat op.
+
+    All inputs are concatenated along the ``axis`` attribute.
+
+    Args:
+        node: The IR Concat node.
+        args: List of FX nodes to concatenate.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Concat).
+
+    Returns:
+        A single-element list containing the cat FX call_function node.
+    """
+    import torch
+
+    axis = node.attributes.get("axis", 0)
+    return [fx_graph.call_function(torch.cat, args=(list(args), int(axis)))]
+
+
+# ---------------------------------------------------------------------------
+# Slice
+# ---------------------------------------------------------------------------
+
+
+def _extract_optional_int_data(node: Node, input_index: int) -> tuple[int, ...] | None:
+    """Extract a static int tuple from an optional IR input, or return ``None``.
+
+    Returns ``None`` if the input index is out of range or the input is a sentinel.
+
+    Args:
+        node: The IR node.
+        input_index: Positional index of the input Value to read.
+
+    Returns:
+        A tuple of ints, or ``None`` if the input is missing or sentinel.
+    """
+    from protofx.ir.value import ValueKind
+
+    if input_index >= len(node.inputs):
+        return None
+    value = node.inputs[input_index]
+    if value.kind == ValueKind.SENTINEL:
+        return None
+    if value.data is None:
+        msg = f"{node.op_type}: input {input_index} ({value.name or value.id}) has no static data"
+        raise NotImplementedError(msg)
+    return tuple(int(v) for v in value.data.flat)
+
+
+@register_op("Slice")
+def _slice(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``operator.getitem`` with slice objects for the ONNX Slice op.
+
+    All slice parameters (starts, ends, axes, steps) are statically extracted.
+    The result is emitted as ``operator.getitem`` with constructed slice objects.
+
+    Args:
+        node: The IR Slice node.
+        args: FX node list; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Slice).
+
+    Returns:
+        A single-element list containing the sliced FX node.
+    """
+    import operator
+
+    starts = _extract_static_int_data(node, 1)
+    ends = _extract_static_int_data(node, 2)
+    axes = _extract_optional_int_data(node, 3)
+    steps = _extract_optional_int_data(node, 4)
+
+    num_slices = len(starts)
+    if axes is None:
+        axes = tuple(range(num_slices))
+    if steps is None:
+        steps = (1,) * num_slices
+
+    # Determine the total number of dims from the input shape
+    input_shape = node.inputs[0].tensor_type.shape
+    ndim = len(input_shape) if input_shape is not None else max(axes) + 1
+
+    # Build a full-dim slice tuple
+    slices: list[slice] = [slice(None)] * ndim
+    for a, s, e, st in zip(axes, starts, ends, steps, strict=False):
+        slices[a] = slice(s, e, st)
+
+    return [fx_graph.call_function(operator.getitem, args=(args[0], tuple(slices)))]
