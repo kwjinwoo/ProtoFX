@@ -154,3 +154,169 @@ def _pow(
     import torch
 
     return [fx_graph.call_function(torch.pow, args=(args[0], args[1]))]
+
+
+# ---------------------------------------------------------------------------
+# Unary elementwise ops
+# ---------------------------------------------------------------------------
+
+
+@register_op("Sigmoid")
+def _sigmoid(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.sigmoid`` for the ONNX Sigmoid op.
+
+    Args:
+        node: The IR Sigmoid node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Sigmoid).
+
+    Returns:
+        A single-element list containing the sigmoid FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.sigmoid, args=(args[0],))]
+
+
+@register_op("Tanh")
+def _tanh(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.tanh`` for the ONNX Tanh op.
+
+    Args:
+        node: The IR Tanh node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Tanh).
+
+    Returns:
+        A single-element list containing the tanh FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.tanh, args=(args[0],))]
+
+
+@register_op("Abs")
+def _abs(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.abs`` for the ONNX Abs op.
+
+    Args:
+        node: The IR Abs node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Abs).
+
+    Returns:
+        A single-element list containing the abs FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.abs, args=(args[0],))]
+
+
+@register_op("Neg")
+def _neg(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.neg`` for the ONNX Neg op.
+
+    Args:
+        node: The IR Neg node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Neg).
+
+    Returns:
+        A single-element list containing the neg FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.neg, args=(args[0],))]
+
+
+@register_op("Exp")
+def _exp(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.exp`` for the ONNX Exp op.
+
+    Args:
+        node: The IR Exp node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Exp).
+
+    Returns:
+        A single-element list containing the exp FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.exp, args=(args[0],))]
+
+
+@register_op("Log")
+def _log(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.log`` for the ONNX Log op.
+
+    Args:
+        node: The IR Log node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Log).
+
+    Returns:
+        A single-element list containing the log FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.log, args=(args[0],))]
+
+
+@register_op("Sqrt")
+def _sqrt(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.sqrt`` for the ONNX Sqrt op.
+
+    Args:
+        node: The IR Sqrt node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Sqrt).
+
+    Returns:
+        A single-element list containing the sqrt FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.sqrt, args=(args[0],))]
