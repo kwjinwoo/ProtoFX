@@ -184,3 +184,178 @@ def _reduce_prod(
     for ax in sorted(axes, reverse=True):
         result = fx_graph.call_function(_torch.prod, args=(result,), kwargs={"dim": ax, "keepdim": keepdims})
     return [result]
+
+
+# ---------------------------------------------------------------------------
+# Compound reduction helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_reduce_kwargs(node: Node) -> tuple[list[int], bool, bool]:
+    """Resolve axes, keepdims, and noop for compound reduce handlers.
+
+    Args:
+        node: The IR reduction node.
+
+    Returns:
+        A tuple of (axes, keepdims, noop).
+    """
+    axes = _read_axes(node)
+    keepdims = _read_keepdims(node)
+    noop = _read_noop_with_empty_axes(node)
+    if axes is None and not noop:
+        axes = list(range(len(node.inputs[0].tensor_type.shape)))
+    return axes, keepdims, noop
+
+
+def _sum_kwargs(axes: list[int], keepdims: bool) -> dict[str, object]:
+    """Build kwargs dict for a ``torch.sum`` call inside a compound reduce.
+
+    Args:
+        axes: Reduction axes.
+        keepdims: Whether to keep reduced dimensions.
+
+    Returns:
+        kwargs dict with ``dim`` and ``keepdim``.
+    """
+    dim: int | list[int] = axes[0] if len(axes) == 1 else axes
+    return {"dim": dim, "keepdim": keepdims}
+
+
+# ---------------------------------------------------------------------------
+# ReduceL1 — abs → sum (compile-friendly, avoids torch.norm)
+# ---------------------------------------------------------------------------
+
+
+@register_op("ReduceL1")
+def _reduce_l1(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.abs`` + ``torch.sum`` for the ONNX ReduceL1 op.
+
+    Uses primitive ops instead of ``torch.norm`` for better ``torch.compile``
+    fusion opportunities.
+
+    Args:
+        node: The IR ReduceL1 node.
+        args: Input FX nodes; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ReduceL1).
+
+    Returns:
+        A single-element list containing the final FX node.
+    """
+    import torch as _torch
+
+    axes, keepdims, noop = _resolve_reduce_kwargs(node)
+    if axes is None and noop:
+        return [args[0]]
+
+    abs_node = fx_graph.call_function(_torch.abs, args=(args[0],))
+    return [fx_graph.call_function(_torch.sum, args=(abs_node,), kwargs=_sum_kwargs(axes, keepdims))]
+
+
+# ---------------------------------------------------------------------------
+# ReduceL2 — square → sum → sqrt (compile-friendly, avoids torch.norm)
+# ---------------------------------------------------------------------------
+
+
+@register_op("ReduceL2")
+def _reduce_l2(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.square`` + ``torch.sum`` + ``torch.sqrt`` for ReduceL2.
+
+    Uses primitive ops instead of ``torch.norm`` for better ``torch.compile``
+    fusion opportunities.
+
+    Args:
+        node: The IR ReduceL2 node.
+        args: Input FX nodes; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ReduceL2).
+
+    Returns:
+        A single-element list containing the final FX node.
+    """
+    import torch as _torch
+
+    axes, keepdims, noop = _resolve_reduce_kwargs(node)
+    if axes is None and noop:
+        return [args[0]]
+
+    sq_node = fx_graph.call_function(_torch.square, args=(args[0],))
+    sum_node = fx_graph.call_function(_torch.sum, args=(sq_node,), kwargs=_sum_kwargs(axes, keepdims))
+    return [fx_graph.call_function(_torch.sqrt, args=(sum_node,))]
+
+
+# ---------------------------------------------------------------------------
+# ReduceLogSum — sum → log
+# ---------------------------------------------------------------------------
+
+
+@register_op("ReduceLogSum")
+def _reduce_logsum(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.sum`` + ``torch.log`` for the ONNX ReduceLogSum op.
+
+    Args:
+        node: The IR ReduceLogSum node.
+        args: Input FX nodes; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ReduceLogSum).
+
+    Returns:
+        A single-element list containing the final FX node.
+    """
+    import torch as _torch
+
+    axes, keepdims, noop = _resolve_reduce_kwargs(node)
+    if axes is None and noop:
+        return [args[0]]
+
+    sum_node = fx_graph.call_function(_torch.sum, args=(args[0],), kwargs=_sum_kwargs(axes, keepdims))
+    return [fx_graph.call_function(_torch.log, args=(sum_node,))]
+
+
+# ---------------------------------------------------------------------------
+# ReduceSumSquare — square → sum
+# ---------------------------------------------------------------------------
+
+
+@register_op("ReduceSumSquare")
+def _reduce_sumsquare(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.square`` + ``torch.sum`` for the ONNX ReduceSumSquare op.
+
+    Args:
+        node: The IR ReduceSumSquare node.
+        args: Input FX nodes; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ReduceSumSquare).
+
+    Returns:
+        A single-element list containing the final FX node.
+    """
+    import torch as _torch
+
+    axes, keepdims, noop = _resolve_reduce_kwargs(node)
+    if axes is None and noop:
+        return [args[0]]
+
+    sq_node = fx_graph.call_function(_torch.square, args=(args[0],))
+    return [fx_graph.call_function(_torch.sum, args=(sq_node,), kwargs=_sum_kwargs(axes, keepdims))]
