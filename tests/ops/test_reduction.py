@@ -228,3 +228,82 @@ class TestReduceOpsNoopEmptyAxes:
         x = torch.randn(2, 3)
         (result,) = gm(x)
         assert torch.allclose(result, x)
+
+
+# ===========================================================================
+# ReduceLogSumExp
+# ===========================================================================
+
+
+class TestReduceLogSumExpStructure:
+    """Verify that ReduceLogSumExp emits correct FX structure."""
+
+    def test_emits_call_function(self) -> None:
+        """ReduceLogSumExp must emit a call_function FX node."""
+        g = _make_reduce_graph_attr_axes("ReduceLogSumExp", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_call_function_target(self) -> None:
+        """The call_function target must be torch.logsumexp."""
+        g = _make_reduce_graph_attr_axes("ReduceLogSumExp", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        call_nodes = [n for n in gm.graph.nodes if n.op == "call_function"]
+        assert len(call_nodes) == 1
+        assert call_nodes[0].target is torch.logsumexp
+
+    def test_single_output(self) -> None:
+        """ReduceLogSumExp handler must return exactly one FX output node."""
+        g = _make_reduce_graph_attr_axes("ReduceLogSumExp", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        output_node = next(n for n in gm.graph.nodes if n.op == "output")
+        assert len(output_node.args[0]) == 1
+
+
+class TestReduceLogSumExpForwardCorrectness:
+    """Verify numerical correctness for ReduceLogSumExp."""
+
+    def test_single_axis_keepdims(self) -> None:
+        """ReduceLogSumExp along a single axis with keepdims=1."""
+        g = _make_reduce_graph_attr_axes("ReduceLogSumExp", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3, 4)
+        (result,) = gm(x)
+        expected = torch.logsumexp(x, dim=1, keepdim=True)
+        assert torch.allclose(result, expected)
+
+    def test_single_axis_no_keepdims(self) -> None:
+        """ReduceLogSumExp along a single axis with keepdims=0."""
+        g = _make_reduce_graph_attr_axes("ReduceLogSumExp", (2, 3, 4), (2, 4), axes=[1], keepdims=0)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3, 4)
+        (result,) = gm(x)
+        expected = torch.logsumexp(x, dim=1, keepdim=False)
+        assert torch.allclose(result, expected)
+
+    def test_multiple_axes(self) -> None:
+        """ReduceLogSumExp along multiple axes."""
+        g = _make_reduce_graph_attr_axes("ReduceLogSumExp", (2, 3, 4), (1, 1, 4), axes=[0, 1], keepdims=1)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3, 4)
+        (result,) = gm(x)
+        expected = torch.logsumexp(x, dim=(0, 1), keepdim=True)
+        assert torch.allclose(result, expected)
+
+    def test_reduce_all_dims(self) -> None:
+        """ReduceLogSumExp over all dimensions."""
+        g = _make_reduce_graph_no_axes("ReduceLogSumExp", (2, 3), (1, 1), keepdims=1)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3)
+        (result,) = gm(x)
+        expected = torch.logsumexp(x, dim=(0, 1), keepdim=True)
+        assert torch.allclose(result, expected)
+
+    def test_noop_empty_axes(self) -> None:
+        """ReduceLogSumExp with noop_with_empty_axes=1 passes through."""
+        g = _make_reduce_graph_noop_empty("ReduceLogSumExp", (2, 3))
+        gm = emit_graph(g)
+        x = torch.randn(2, 3)
+        (result,) = gm(x)
+        assert torch.allclose(result, x)
