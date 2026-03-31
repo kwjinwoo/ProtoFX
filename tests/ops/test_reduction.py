@@ -307,3 +307,89 @@ class TestReduceLogSumExpForwardCorrectness:
         x = torch.randn(2, 3)
         (result,) = gm(x)
         assert torch.allclose(result, x)
+
+
+# ===========================================================================
+# ReduceProd
+# ===========================================================================
+
+
+def _torch_prod_multi_axis(x: torch.Tensor, axes: list[int], keepdim: bool) -> torch.Tensor:
+    """Product over multiple axes, applied one at a time in descending order."""
+    for ax in sorted(axes, reverse=True):
+        x = torch.prod(x, dim=ax, keepdim=keepdim)
+    return x
+
+
+class TestReduceProdStructure:
+    """Verify that ReduceProd emits correct FX structure."""
+
+    def test_emits_call_function(self) -> None:
+        """ReduceProd must emit a call_function FX node."""
+        g = _make_reduce_graph_attr_axes("ReduceProd", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_call_function_target(self) -> None:
+        """The call_function target must be torch.prod."""
+        g = _make_reduce_graph_attr_axes("ReduceProd", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        call_nodes = [n for n in gm.graph.nodes if n.op == "call_function"]
+        assert len(call_nodes) == 1
+        assert call_nodes[0].target is torch.prod
+
+    def test_single_output(self) -> None:
+        """ReduceProd handler must return exactly one FX output node."""
+        g = _make_reduce_graph_attr_axes("ReduceProd", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        output_node = next(n for n in gm.graph.nodes if n.op == "output")
+        assert len(output_node.args[0]) == 1
+
+
+class TestReduceProdForwardCorrectness:
+    """Verify numerical correctness for ReduceProd."""
+
+    def test_single_axis_keepdims(self) -> None:
+        """ReduceProd along a single axis with keepdims=1."""
+        g = _make_reduce_graph_attr_axes("ReduceProd", (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3, 4)
+        (result,) = gm(x)
+        expected = torch.prod(x, dim=1, keepdim=True)
+        assert torch.allclose(result, expected)
+
+    def test_single_axis_no_keepdims(self) -> None:
+        """ReduceProd along a single axis with keepdims=0."""
+        g = _make_reduce_graph_attr_axes("ReduceProd", (2, 3, 4), (2, 4), axes=[1], keepdims=0)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3, 4)
+        (result,) = gm(x)
+        expected = torch.prod(x, dim=1, keepdim=False)
+        assert torch.allclose(result, expected)
+
+    def test_multiple_axes_keepdims(self) -> None:
+        """ReduceProd along multiple axes with keepdims=1."""
+        g = _make_reduce_graph_attr_axes("ReduceProd", (2, 3, 4), (1, 1, 4), axes=[0, 1], keepdims=1)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3, 4)
+        (result,) = gm(x)
+        expected = _torch_prod_multi_axis(x, [0, 1], keepdim=True)
+        assert torch.allclose(result, expected)
+
+    def test_reduce_all_dims(self) -> None:
+        """ReduceProd over all dimensions."""
+        g = _make_reduce_graph_no_axes("ReduceProd", (2, 3), (1, 1), keepdims=1)
+        gm = emit_graph(g)
+        x = torch.randn(2, 3)
+        (result,) = gm(x)
+        expected = _torch_prod_multi_axis(x, [0, 1], keepdim=True)
+        assert torch.allclose(result, expected)
+
+    def test_noop_empty_axes(self) -> None:
+        """ReduceProd with noop_with_empty_axes=1 passes through."""
+        g = _make_reduce_graph_noop_empty("ReduceProd", (2, 3))
+        gm = emit_graph(g)
+        x = torch.randn(2, 3)
+        (result,) = gm(x)
+        assert torch.allclose(result, x)
