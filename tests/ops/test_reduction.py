@@ -198,7 +198,8 @@ class TestReduceOpsForwardCorrectness:
         gm = emit_graph(g)
         x = torch.randn(2, 3)
         (result,) = gm(x)
-        expected = torch_fn(x, keepdim=True)
+        # torch.mean/sum require explicit dim for keepdim; pass all dims
+        expected = torch_fn(x, dim=(0, 1), keepdim=True)
         assert torch.allclose(result, expected)
 
 
