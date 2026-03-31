@@ -139,3 +139,48 @@ _reduce_sum = _make_simple_reduce_handler("ReduceSum", "sum")
 _reduce_max = _make_simple_reduce_handler("ReduceMax", "amax")
 _reduce_min = _make_simple_reduce_handler("ReduceMin", "amin")
 _reduce_logsumexp = _make_simple_reduce_handler("ReduceLogSumExp", "logsumexp")
+
+
+# ---------------------------------------------------------------------------
+# ReduceProd — requires iterative single-dim reduction
+# ---------------------------------------------------------------------------
+
+
+@register_op("ReduceProd")
+def _reduce_prod(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.prod`` for the ONNX ReduceProd op.
+
+    ``torch.prod`` only supports a single dim, so multi-axis reduction is
+    handled by applying ``torch.prod`` iteratively in descending axis order
+    to keep indices stable.
+
+    Args:
+        node: The IR ReduceProd node.
+        args: Input FX nodes; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ReduceProd).
+
+    Returns:
+        A single-element list containing the prod FX call_function node.
+    """
+    import torch as _torch
+
+    axes = _read_axes(node)
+    keepdims = _read_keepdims(node)
+    noop = _read_noop_with_empty_axes(node)
+
+    if axes is None and noop:
+        return [args[0]]
+
+    if axes is None:
+        axes = list(range(len(node.inputs[0].tensor_type.shape)))
+
+    result = args[0]
+    for ax in sorted(axes, reverse=True):
+        result = fx_graph.call_function(_torch.prod, args=(result,), kwargs={"dim": ax, "keepdim": keepdims})
+    return [result]
