@@ -393,3 +393,100 @@ class TestReduceProdForwardCorrectness:
         x = torch.randn(2, 3)
         (result,) = gm(x)
         assert torch.allclose(result, x)
+
+
+# ===========================================================================
+# Compound reduction ops: ReduceL1, ReduceL2, ReduceLogSum, ReduceSumSquare
+# ===========================================================================
+
+_COMPOUND_OPS = ["ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceSumSquare"]
+
+
+def _compound_reference(op_type: str, x: torch.Tensor, dim: tuple[int, ...], keepdim: bool) -> torch.Tensor:
+    """Compute reference result for a compound reduction op."""
+    match op_type:
+        case "ReduceL1":
+            return torch.sum(torch.abs(x), dim=dim, keepdim=keepdim)
+        case "ReduceL2":
+            return torch.sqrt(torch.sum(x * x, dim=dim, keepdim=keepdim))
+        case "ReduceLogSum":
+            return torch.log(torch.sum(x, dim=dim, keepdim=keepdim))
+        case "ReduceSumSquare":
+            return torch.sum(x * x, dim=dim, keepdim=keepdim)
+        case _:
+            msg = f"Unknown compound op: {op_type}"
+            raise ValueError(msg)
+
+
+class TestCompoundReduceStructure:
+    """Verify compound reduce ops emit call_function FX nodes."""
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_emits_call_function(self, op_type: str) -> None:
+        """Compound reduce op must emit at least one call_function FX node."""
+        g = _make_reduce_graph_attr_axes(op_type, (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_single_output(self, op_type: str) -> None:
+        """Compound reduce op handler must return exactly one FX output node."""
+        g = _make_reduce_graph_attr_axes(op_type, (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        output_node = next(n for n in gm.graph.nodes if n.op == "output")
+        assert len(output_node.args[0]) == 1
+
+
+class TestCompoundReduceForwardCorrectness:
+    """Verify numerical correctness for compound reduce ops."""
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_single_axis_keepdims(self, op_type: str) -> None:
+        """Compound reduce along a single axis with keepdims=1."""
+        g = _make_reduce_graph_attr_axes(op_type, (2, 3, 4), (2, 1, 4), axes=[1], keepdims=1)
+        gm = emit_graph(g)
+        # Use positive values for ReduceLogSum (log requires positive input)
+        x = torch.rand(2, 3, 4) + 0.1
+        (result,) = gm(x)
+        expected = _compound_reference(op_type, x, dim=(1,), keepdim=True)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_single_axis_no_keepdims(self, op_type: str) -> None:
+        """Compound reduce along a single axis with keepdims=0."""
+        g = _make_reduce_graph_attr_axes(op_type, (2, 3, 4), (2, 4), axes=[1], keepdims=0)
+        gm = emit_graph(g)
+        x = torch.rand(2, 3, 4) + 0.1
+        (result,) = gm(x)
+        expected = _compound_reference(op_type, x, dim=(1,), keepdim=False)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_multiple_axes(self, op_type: str) -> None:
+        """Compound reduce along multiple axes."""
+        g = _make_reduce_graph_attr_axes(op_type, (2, 3, 4), (1, 1, 4), axes=[0, 1], keepdims=1)
+        gm = emit_graph(g)
+        x = torch.rand(2, 3, 4) + 0.1
+        (result,) = gm(x)
+        expected = _compound_reference(op_type, x, dim=(0, 1), keepdim=True)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_reduce_all_dims(self, op_type: str) -> None:
+        """Compound reduce over all dimensions."""
+        g = _make_reduce_graph_no_axes(op_type, (2, 3), (1, 1), keepdims=1)
+        gm = emit_graph(g)
+        x = torch.rand(2, 3) + 0.1
+        (result,) = gm(x)
+        expected = _compound_reference(op_type, x, dim=(0, 1), keepdim=True)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    @pytest.mark.parametrize("op_type", _COMPOUND_OPS)
+    def test_noop_empty_axes(self, op_type: str) -> None:
+        """Compound reduce with noop_with_empty_axes=1 passes through."""
+        g = _make_reduce_graph_noop_empty(op_type, (2, 3))
+        gm = emit_graph(g)
+        x = torch.rand(2, 3) + 0.1
+        (result,) = gm(x)
+        assert torch.allclose(result, x)
