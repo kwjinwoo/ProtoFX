@@ -41,7 +41,7 @@ Handlers for the most common ONNX ops to support real-world models.
 | ✅ | Reduction ops (ReduceMean, ReduceSum, ReduceMax, ...) |
 | ✅ | Linear algebra (MatMul, Gemm) |
 | ✅ | Convolution (Conv, ConvTranspose) |
-| 📋 | Normalization (BatchNormalization, LayerNormalization) |
+| ✅ | Normalization (BatchNormalization, LayerNormalization) |
 | 📋 | Pooling (MaxPool, AveragePool, GlobalAveragePool) |
 | 📋 | Activation (Softmax, LogSoftmax, Gelu, ...) |
 
