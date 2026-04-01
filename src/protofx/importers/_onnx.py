@@ -7,6 +7,8 @@ emitter never touches raw protobuf structures.
 
 from __future__ import annotations
 
+import math
+
 import onnx
 
 from protofx.ir.dim import Dim
@@ -214,6 +216,117 @@ def _inline_constant(
         value_registry[output_name] = const_value
 
 
+def _normalize_conv_auto_pad(
+    attributes: dict[str, AttributeValue],
+    node_proto: onnx.NodeProto,
+    value_registry: dict[str, Value],
+    vi_map: dict[str, onnx.TypeProto],
+) -> None:
+    """Normalize ``auto_pad`` on Conv/ConvTranspose to explicit ``pads``.
+
+    Converts ``VALID`` to all-zeros pads and ``SAME_UPPER``/``SAME_LOWER``
+    to computed explicit padding values. After normalization ``auto_pad``
+    is set to ``b"NOTSET"``.
+
+    For ``SAME_*`` modes the input spatial dimensions must be statically
+    known (concrete integers).
+
+    Args:
+        attributes: Mutable attribute dict to normalize in-place.
+        node_proto: The source ONNX node proto.
+        value_registry: Name-to-Value mapping for resolving input shapes.
+        vi_map: Name-to-TypeProto mapping for resolving shapes.
+
+    Raises:
+        NotImplementedError: If ``SAME_*`` is requested but spatial dimensions
+            are not statically known.
+    """
+    auto_pad_raw = attributes.get("auto_pad")
+    if auto_pad_raw is None:
+        return
+
+    # ONNX stores string attrs as bytes
+    auto_pad = auto_pad_raw.decode() if isinstance(auto_pad_raw, bytes) else str(auto_pad_raw)
+
+    if auto_pad == "NOTSET":
+        return
+
+    # Determine spatial rank from weight shape
+    w_name = node_proto.input[1] if len(node_proto.input) > 1 else ""
+    kernel_shape: list[int] | None = None
+
+    # Try kernel_shape attribute first
+    ks_attr = attributes.get("kernel_shape")
+    if ks_attr is not None:
+        kernel_shape = [int(v) for v in ks_attr]  # type: ignore[union-attr]
+
+    # Fallback: derive from weight tensor shape
+    if kernel_shape is None and w_name:
+        w_shape: tuple[int, ...] | None = None
+        if w_name in value_registry and value_registry[w_name].tensor_type.shape is not None:
+            w_shape = tuple(value_registry[w_name].tensor_type.shape)  # type: ignore[arg-type]
+        elif w_name in vi_map:
+            tp = vi_map[w_name].tensor_type
+            if tp.HasField("shape"):
+                w_shape = tuple(int(d.dim_value) for d in tp.shape.dim)
+        if w_shape is not None:
+            # Weight shape: Conv = (OC, IC/g, *kernel), ConvTranspose = (IC, OC/g, *kernel)
+            kernel_shape = list(w_shape[2:])
+
+    if kernel_shape is None:
+        msg = f"{node_proto.op_type}: cannot determine kernel_shape for auto_pad normalization"
+        raise NotImplementedError(msg)
+
+    spatial_rank = len(kernel_shape)
+
+    if auto_pad == "VALID":
+        attributes["pads"] = [0] * (2 * spatial_rank)
+        attributes["auto_pad"] = b"NOTSET"
+        return
+
+    # SAME_UPPER / SAME_LOWER need input spatial shape
+    x_name = node_proto.input[0] if len(node_proto.input) > 0 else ""
+    input_spatial: list[int] | None = None
+
+    if x_name in value_registry and value_registry[x_name].tensor_type.shape is not None:
+        full_shape = value_registry[x_name].tensor_type.shape
+        input_spatial = [int(d) for d in full_shape[2:]]  # type: ignore[union-attr]
+    elif x_name in vi_map:
+        tp = vi_map[x_name].tensor_type
+        if tp.HasField("shape"):
+            dims = [d.dim_value for d in tp.shape.dim]
+            input_spatial = [int(d) for d in dims[2:]]
+
+    if input_spatial is None or len(input_spatial) != spatial_rank:
+        msg = f"{node_proto.op_type}: SAME_* auto_pad requires static spatial dimensions"
+        raise NotImplementedError(msg)
+
+    strides = [int(v) for v in attributes.get("strides", [1] * spatial_rank)]  # type: ignore[union-attr]
+    dilations = [int(v) for v in attributes.get("dilations", [1] * spatial_rank)]  # type: ignore[union-attr]
+
+    pads_begin: list[int] = []
+    pads_end: list[int] = []
+
+    for i in range(spatial_rank):
+        effective_kernel = kernel_shape[i] + (kernel_shape[i] - 1) * (dilations[i] - 1)
+        out_size = math.ceil(input_spatial[i] / strides[i])
+        total_pad = max(0, (out_size - 1) * strides[i] + effective_kernel - input_spatial[i])
+
+        if auto_pad == "SAME_UPPER":
+            pad_begin = total_pad // 2
+            pad_end = total_pad - pad_begin
+        else:  # SAME_LOWER
+            pad_end = total_pad // 2
+            pad_begin = total_pad - pad_end
+
+        pads_begin.append(pad_begin)
+        pads_end.append(pad_end)
+
+    # ONNX pads format: [begin_d0, begin_d1, ..., end_d0, end_d1, ...]
+    attributes["pads"] = pads_begin + pads_end
+    attributes["auto_pad"] = b"NOTSET"
+
+
 def _import_nodes(
     graph: Graph,
     graph_proto: onnx.GraphProto,
@@ -265,6 +378,10 @@ def _import_nodes(
         attributes: dict[str, AttributeValue] = {}
         for attr in node_proto.attribute:
             attributes[attr.name] = _normalize_attribute(attr)
+
+        # Normalize Conv/ConvTranspose auto_pad to explicit pads
+        if node_proto.op_type in ("Conv", "ConvTranspose") and node_proto.domain in ("", "ai.onnx"):
+            _normalize_conv_auto_pad(attributes, node_proto, value_registry, vi_map)
 
         # Resolve opset version: use node-level domain opset or model default
         opset_version = default_opset if node_proto.domain in ("", "ai.onnx") else None
