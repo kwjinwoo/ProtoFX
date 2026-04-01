@@ -107,3 +107,111 @@ class TestBatchNormalizationHandler:
         g = _make_bn_graph(x_shape=(1, 3, 4, 4), num_features=3, training_mode=1)
         with pytest.raises(NotImplementedError, match="BatchNormalization"):
             emit_graph(g)
+
+
+# ---------------------------------------------------------------------------
+# LayerNormalization helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_ln_graph(
+    *,
+    x_shape: tuple[int, ...],
+    axis: int = -1,
+    epsilon: float | None = None,
+    has_bias: bool = True,
+) -> Graph:
+    """Build a minimal IR graph: (X, scale [, B]) -> LayerNormalization -> Y.
+
+    Args:
+        x_shape: Shape of the input tensor X.
+        axis: The axis attribute. Defaults to ``-1``.
+        epsilon: Optional epsilon attribute. Uses ONNX default (1e-5) when ``None``.
+        has_bias: Whether to include the bias input. When ``False``, a sentinel is used.
+    """
+    g = Graph(name="LayerNormalization_test")
+
+    # Compute normalized_shape from axis
+    ndim = len(x_shape)
+    resolved_axis = axis if axis >= 0 else ndim + axis
+    norm_shape = x_shape[resolved_axis:]
+
+    x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=x_shape), name="X")
+    scale = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=norm_shape), name="scale")
+
+    if has_bias:
+        b = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=norm_shape), name="B")
+    else:
+        b = g.add_sentinel()
+
+    attributes: dict[str, int | float] = {"axis": axis}
+    if epsilon is not None:
+        attributes["epsilon"] = epsilon
+
+    node = g.make_node(
+        op_type="LayerNormalization",
+        inputs=[x, scale, b],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=x_shape)],
+        output_names=["Y"],
+        attributes=attributes,
+    )
+    g.set_graph_outputs(list(node.outputs))
+    return g
+
+
+# ---------------------------------------------------------------------------
+# LayerNormalization tests
+# ---------------------------------------------------------------------------
+
+
+class TestLayerNormalizationHandler:
+    """Verify that the LayerNormalization op handler emits correct FX nodes."""
+
+    def test_ln_axis_neg1(self) -> None:
+        """LayerNormalization with axis=-1 (default) must produce correct results."""
+        x_shape = (2, 3, 4)
+        g = _make_ln_graph(x_shape=x_shape, axis=-1)
+        gm = emit_graph(g)
+        x = torch.randn(*x_shape)
+        scale = torch.randn(x_shape[-1])
+        bias = torch.randn(x_shape[-1])
+        (result,) = gm(x, scale, bias)
+        expected = F.layer_norm(x, [x_shape[-1]], weight=scale, bias=bias, eps=1e-5)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    def test_ln_axis_1(self) -> None:
+        """LayerNormalization with axis=1 must normalize over last N-1 dims."""
+        x_shape = (2, 3, 4)
+        g = _make_ln_graph(x_shape=x_shape, axis=1)
+        gm = emit_graph(g)
+        x = torch.randn(*x_shape)
+        norm_shape = x_shape[1:]  # (3, 4)
+        scale = torch.randn(*norm_shape)
+        bias = torch.randn(*norm_shape)
+        (result,) = gm(x, scale, bias)
+        expected = F.layer_norm(x, list(norm_shape), weight=scale, bias=bias, eps=1e-5)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    def test_ln_custom_epsilon(self) -> None:
+        """LayerNormalization with custom epsilon must produce correct results."""
+        eps = 1e-3
+        x_shape = (1, 4, 8)
+        g = _make_ln_graph(x_shape=x_shape, axis=-1, epsilon=eps)
+        gm = emit_graph(g)
+        x = torch.randn(*x_shape)
+        scale = torch.randn(x_shape[-1])
+        bias = torch.randn(x_shape[-1])
+        (result,) = gm(x, scale, bias)
+        expected = F.layer_norm(x, [x_shape[-1]], weight=scale, bias=bias, eps=eps)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    def test_ln_no_bias(self) -> None:
+        """LayerNormalization without bias must produce correct results."""
+        x_shape = (2, 3, 4)
+        g = _make_ln_graph(x_shape=x_shape, axis=-1, has_bias=False)
+        gm = emit_graph(g)
+        x = torch.randn(*x_shape)
+        scale = torch.randn(x_shape[-1])
+        (result,) = gm(x, scale)
+        expected = F.layer_norm(x, [x_shape[-1]], weight=scale, bias=None, eps=1e-5)
+        assert torch.allclose(result, expected, atol=1e-6)
