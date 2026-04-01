@@ -40,7 +40,7 @@ Handlers for the most common ONNX ops to support real-world models.
 | ✅ | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, Concat, Slice, Identity, Cast, Expand, Gather) |
 | ✅ | Reduction ops (ReduceMean, ReduceSum, ReduceMax, ...) |
 | ✅ | Linear algebra (MatMul, Gemm) |
-| 📋 | Convolution (Conv, ConvTranspose) |
+| ✅ | Convolution (Conv, ConvTranspose) |
 | 📋 | Normalization (BatchNormalization, LayerNormalization) |
 | 📋 | Pooling (MaxPool, AveragePool, GlobalAveragePool) |
 | 📋 | Activation (Softmax, LogSoftmax, Gelu, ...) |
