@@ -4,6 +4,7 @@
 import protofx.ops.conv as conv  # noqa: F401
 import protofx.ops.elementwise as elementwise  # noqa: F401
 import protofx.ops.linalg as linalg  # noqa: F401
+import protofx.ops.normalization as normalization  # noqa: F401
 import protofx.ops.reduction as reduction  # noqa: F401
 import protofx.ops.tensor as tensor  # noqa: F401
 from protofx.ops._registry import dispatch_op, register_op
