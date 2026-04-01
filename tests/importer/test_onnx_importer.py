@@ -785,3 +785,172 @@ class TestImportModelValidateContract:
         with patch("protofx.ir.graph.Graph.validate", side_effect=ValueError("invariant violated")):
             with pytest.raises(ValueError, match="invariant violated"):
                 import_model(model)
+
+
+# ── auto_pad normalization ────────────────────────────────────────────
+
+
+class TestAutoPadNormalization:
+    """Verify that Conv/ConvTranspose auto_pad is normalized to explicit pads during import."""
+
+    def _make_conv_model(
+        self,
+        *,
+        auto_pad: str,
+        x_shape: list[int],
+        w_shape: list[int],
+        y_shape: list[int],
+        strides: list[int] | None = None,
+        dilations: list[int] | None = None,
+        op_type: str = "Conv",
+    ) -> onnx.ModelProto:
+        """Build an ONNX model with a Conv/ConvTranspose node using auto_pad."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, x_shape)
+        W_init = onnx.numpy_helper.from_array(np.zeros(w_shape, dtype=np.float32), name="W")
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, y_shape)
+
+        attrs: dict[str, object] = {"auto_pad": auto_pad}
+        if strides is not None:
+            attrs["strides"] = strides
+        if dilations is not None:
+            attrs["dilations"] = dilations
+
+        conv_node = helper.make_node(
+            op_type,
+            inputs=["X", "W"],
+            outputs=["Y"],
+            **attrs,
+        )
+        return _make_model([X], outputs=[Y], initializers=[W_init], nodes=[conv_node])
+
+    def test_valid_produces_zero_pads(self) -> None:
+        """auto_pad=VALID must be normalized to all-zero pads."""
+        model = self._make_conv_model(
+            auto_pad="VALID",
+            x_shape=[1, 1, 5, 5],
+            w_shape=[1, 1, 3, 3],
+            y_shape=[1, 1, 3, 3],
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "Conv")
+        assert conv_node.attributes.get("pads") == [0, 0, 0, 0]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+    def test_same_upper_produces_explicit_pads(self) -> None:
+        """auto_pad=SAME_UPPER must be normalized to explicit symmetric-ish pads."""
+        # X: (1,1,5,5), W: (1,1,3,3), strides=[1,1] -> SAME_UPPER -> Y: (1,1,5,5)
+        model = self._make_conv_model(
+            auto_pad="SAME_UPPER",
+            x_shape=[1, 1, 5, 5],
+            w_shape=[1, 1, 3, 3],
+            y_shape=[1, 1, 5, 5],
+            strides=[1, 1],
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "Conv")
+        # For 5x5 input, 3x3 kernel, stride 1: total_pad = 2 per axis
+        # SAME_UPPER: pad_begin = total_pad // 2 = 1, pad_end = total_pad - pad_begin = 1
+        assert conv_node.attributes.get("pads") == [1, 1, 1, 1]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+    def test_same_lower_produces_explicit_pads(self) -> None:
+        """auto_pad=SAME_LOWER must be normalized to explicit pads (more at begin)."""
+        # X: (1,1,4,4), W: (1,1,3,3), strides=[1,1] -> SAME_LOWER -> Y: (1,1,4,4)
+        model = self._make_conv_model(
+            auto_pad="SAME_LOWER",
+            x_shape=[1, 1, 4, 4],
+            w_shape=[1, 1, 3, 3],
+            y_shape=[1, 1, 4, 4],
+            strides=[1, 1],
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "Conv")
+        # For 4x4 input, 3x3 kernel, stride 1: total_pad = 2 per axis
+        # SAME_LOWER: pad_end = total_pad // 2 = 1, pad_begin = total_pad - pad_end = 1
+        assert conv_node.attributes.get("pads") == [1, 1, 1, 1]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+    def test_same_upper_asymmetric(self) -> None:
+        """auto_pad=SAME_UPPER with even input and stride=2 produces asymmetric pads."""
+        # X: (1,1,6,6), W: (1,1,3,3), strides=[2,2] -> SAME_UPPER -> Y: (1,1,3,3)
+        # effective_kernel = 3, output_size = ceil(6/2) = 3
+        # total_pad = max(0, (3-1)*2 + 3 - 6) = max(0, 1) = 1
+        # SAME_UPPER: pad_begin = 0, pad_end = 1
+        model = self._make_conv_model(
+            auto_pad="SAME_UPPER",
+            x_shape=[1, 1, 6, 6],
+            w_shape=[1, 1, 3, 3],
+            y_shape=[1, 1, 3, 3],
+            strides=[2, 2],
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "Conv")
+        assert conv_node.attributes.get("pads") == [0, 0, 1, 1]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+    def test_same_upper_with_dilation(self) -> None:
+        """auto_pad=SAME_UPPER with dilation must account for effective kernel size."""
+        # X: (1,1,7,7), W: (1,1,3,3), strides=[1,1], dilation=[2,2]
+        # effective_kernel = 3 + (3-1)*(2-1) = 5
+        # output_size = ceil(7/1) = 7
+        # total_pad = max(0, (7-1)*1 + 5 - 7) = max(0, 4) = 4
+        # SAME_UPPER: pad_begin = 2, pad_end = 2
+        model = self._make_conv_model(
+            auto_pad="SAME_UPPER",
+            x_shape=[1, 1, 7, 7],
+            w_shape=[1, 1, 3, 3],
+            y_shape=[1, 1, 7, 7],
+            strides=[1, 1],
+            dilations=[2, 2],
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "Conv")
+        assert conv_node.attributes.get("pads") == [2, 2, 2, 2]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+    def test_conv_transpose_valid(self) -> None:
+        """auto_pad=VALID on ConvTranspose must be normalized to all-zero pads."""
+        model = self._make_conv_model(
+            auto_pad="VALID",
+            x_shape=[1, 1, 3, 3],
+            w_shape=[1, 1, 3, 3],
+            y_shape=[1, 1, 5, 5],
+            op_type="ConvTranspose",
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "ConvTranspose")
+        assert conv_node.attributes.get("pads") == [0, 0, 0, 0]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+    def test_notset_is_passthrough(self) -> None:
+        """auto_pad=NOTSET should not alter existing pads."""
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 5, 5])
+        W_init = onnx.numpy_helper.from_array(np.zeros([1, 1, 3, 3], dtype=np.float32), name="W")
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 5, 5])
+        conv_node = helper.make_node(
+            "Conv",
+            inputs=["X", "W"],
+            outputs=["Y"],
+            auto_pad="NOTSET",
+            pads=[1, 1, 1, 1],
+        )
+        model = _make_model([X], outputs=[Y], initializers=[W_init], nodes=[conv_node])
+        g = import_model(model)
+        node = next(n for n in g.nodes if n.op_type == "Conv")
+        assert node.attributes.get("pads") == [1, 1, 1, 1]
+
+    def test_1d_same_upper(self) -> None:
+        """auto_pad=SAME_UPPER on 1D Conv must produce correct 1D pads."""
+        # X: (1,1,5), W: (1,1,3), strides=[1] -> Y: (1,1,5)
+        # total_pad = 2, pad_begin = 1, pad_end = 1
+        model = self._make_conv_model(
+            auto_pad="SAME_UPPER",
+            x_shape=[1, 1, 5],
+            w_shape=[1, 1, 3],
+            y_shape=[1, 1, 5],
+            strides=[1],
+        )
+        g = import_model(model)
+        conv_node = next(n for n in g.nodes if n.op_type == "Conv")
+        assert conv_node.attributes.get("pads") == [1, 1]
+        assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
