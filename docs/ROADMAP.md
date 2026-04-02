@@ -43,7 +43,7 @@ Handlers for the most common ONNX ops to support real-world models.
 | ✅ | Convolution (Conv, ConvTranspose) |
 | ✅ | Normalization (BatchNormalization, LayerNormalization) |
 | ✅ | Pooling (MaxPool, AveragePool, GlobalAveragePool) |
-| 📋 | Activation (Softmax, LogSoftmax, Gelu, ...) |
+| ✅ | Activation (Softmax, LogSoftmax, Gelu, Elu, LeakyRelu, Selu, Celu, PRelu, HardSigmoid, HardSwish, Mish, Softplus, Softsign, ThresholdedRelu) |
 
 ---
 
