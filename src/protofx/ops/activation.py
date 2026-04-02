@@ -246,3 +246,161 @@ def _prelu(
     import torch.nn.functional as F
 
     return [fx_graph.call_function(F.prelu, args=(args[0], args[1]))]
+
+
+@register_op("HardSigmoid")
+def _hard_sigmoid(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``clamp(alpha * x + beta, 0, 1)`` for the ONNX HardSigmoid op.
+
+    The ONNX spec defines ``HardSigmoid(x) = max(0, min(1, alpha * x + beta))``
+    with ``alpha=0.2`` and ``beta=0.5`` defaults. This does **not** match PyTorch's
+    ``F.hardsigmoid`` formula, so we emit the arithmetic manually.
+
+    Args:
+        node: The IR HardSigmoid node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for HardSigmoid).
+
+    Returns:
+        A single-element list containing the clamped FX node.
+    """
+    import torch
+
+    alpha = float(node.attributes.get("alpha", 0.2))
+    beta = float(node.attributes.get("beta", 0.5))
+
+    mul_node = fx_graph.call_function(torch.mul, args=(args[0], alpha))
+    add_node = fx_graph.call_function(torch.add, args=(mul_node, beta))
+    return [fx_graph.call_function(torch.clamp, args=(add_node,), kwargs={"min": 0.0, "max": 1.0})]
+
+
+@register_op("HardSwish")
+def _hard_swish(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.nn.functional.hardswish`` for the ONNX HardSwish op (opset 14).
+
+    Args:
+        node: The IR HardSwish node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for HardSwish).
+
+    Returns:
+        A single-element list containing the hardswish FX call_function node.
+    """
+    import torch.nn.functional as F
+
+    return [fx_graph.call_function(F.hardswish, args=(args[0],))]
+
+
+@register_op("Mish")
+def _mish(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.nn.functional.mish`` for the ONNX Mish op (opset 18).
+
+    Args:
+        node: The IR Mish node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Mish).
+
+    Returns:
+        A single-element list containing the mish FX call_function node.
+    """
+    import torch.nn.functional as F
+
+    return [fx_graph.call_function(F.mish, args=(args[0],))]
+
+
+@register_op("Softplus")
+def _softplus(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.nn.functional.softplus`` for the ONNX Softplus op.
+
+    Args:
+        node: The IR Softplus node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Softplus).
+
+    Returns:
+        A single-element list containing the softplus FX call_function node.
+    """
+    import torch.nn.functional as F
+
+    return [fx_graph.call_function(F.softplus, args=(args[0],))]
+
+
+@register_op("Softsign")
+def _softsign(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``x / (1 + abs(x))`` for the ONNX Softsign op.
+
+    PyTorch does not provide a built-in ``F.softsign``, so the formula is
+    emitted manually using primitive ops.
+
+    Args:
+        node: The IR Softsign node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Softsign).
+
+    Returns:
+        A single-element list containing the softsign FX node.
+    """
+    import torch
+
+    abs_node = fx_graph.call_function(torch.abs, args=(args[0],))
+    denom = fx_graph.call_function(torch.add, args=(abs_node, 1.0))
+    return [fx_graph.call_function(torch.div, args=(args[0], denom))]
+
+
+@register_op("ThresholdedRelu")
+def _thresholded_relu(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.where(x > alpha, x, 0)`` for the ONNX ThresholdedRelu op.
+
+    Supports the ``alpha`` attribute (default ``1.0``).
+
+    Args:
+        node: The IR ThresholdedRelu node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ThresholdedRelu).
+
+    Returns:
+        A single-element list containing the thresholded relu FX node.
+    """
+    import torch
+
+    alpha = float(node.attributes.get("alpha", 1.0))
+
+    gt_node = fx_graph.call_function(torch.gt, args=(args[0], alpha))
+    zeros_node = fx_graph.call_function(torch.zeros_like, args=(args[0],))
+    return [fx_graph.call_function(torch.where, args=(gt_node, args[0], zeros_node))]
