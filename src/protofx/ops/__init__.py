@@ -1,6 +1,7 @@
 """ProtoFX ONNX op handler registry."""
 
 # Import handler modules so @register_op decorators execute at package load time.
+import protofx.ops.activation as activation  # noqa: F401
 import protofx.ops.conv as conv  # noqa: F401
 import protofx.ops.elementwise as elementwise  # noqa: F401
 import protofx.ops.linalg as linalg  # noqa: F401
