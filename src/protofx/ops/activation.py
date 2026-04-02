@@ -88,3 +88,30 @@ def _log_softmax(
 
     axis = node.attributes.get("axis", 1)
     return [fx_graph.call_function(F.log_softmax, args=(args[0],), kwargs={"dim": int(axis)})]
+
+
+@register_op("Gelu")
+def _gelu(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.nn.functional.gelu`` for the ONNX Gelu op (opset 20).
+
+    Supports the ``approximate`` attribute: ``"none"`` (default) for the exact
+    formulation, ``"tanh"`` for the fast tanh approximation.
+
+    Args:
+        node: The IR Gelu node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Gelu).
+
+    Returns:
+        A single-element list containing the gelu FX call_function node.
+    """
+    import torch.nn.functional as F
+
+    approximate = str(node.attributes.get("approximate", "none"))
+    return [fx_graph.call_function(F.gelu, args=(args[0],), kwargs={"approximate": approximate})]
