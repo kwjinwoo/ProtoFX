@@ -83,7 +83,7 @@ def _gemm(
         y = fx_graph.call_function(torch.mul, args=(y, alpha))
 
     # Add bias C scaled by beta (elide mul when beta == 1.0)
-    if args[2] is not None:
+    if len(args) > 2 and args[2] is not None:
         c: torch.fx.Node = args[2]  # type: ignore[assignment]
         if beta != 1.0:
             c = fx_graph.call_function(torch.mul, args=(c, beta))
