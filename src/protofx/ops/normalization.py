@@ -115,7 +115,7 @@ def _layer_normalization(
 
     x_node = args[0]
     scale_node = args[1]
-    b_node = args[2]  # None if sentinel
+    b_node = args[2] if len(args) > 2 else None  # None if sentinel or omitted
 
     return [
         fx_graph.call_function(
