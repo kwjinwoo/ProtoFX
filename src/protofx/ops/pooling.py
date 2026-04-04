@@ -96,7 +96,7 @@ def _max_pool(
     pool_fn = {1: F.max_pool1d, 2: F.max_pool2d, 3: F.max_pool3d}[spatial_rank]
 
     kernel_shape = node.attributes["kernel_shape"]
-    strides = node.attributes.get("strides", kernel_shape)
+    strides = node.attributes.get("strides", [1] * spatial_rank)
     pads_raw = node.attributes.get("pads", [0] * (2 * spatial_rank))
     dilations = node.attributes.get("dilations", [1] * spatial_rank)
     ceil_mode = node.attributes.get("ceil_mode", 0)
@@ -167,7 +167,7 @@ def _average_pool(
     pool_fn = {1: F.avg_pool1d, 2: F.avg_pool2d, 3: F.avg_pool3d}[spatial_rank]
 
     kernel_shape = node.attributes["kernel_shape"]
-    strides = node.attributes.get("strides", kernel_shape)
+    strides = node.attributes.get("strides", [1] * spatial_rank)
     pads_raw = node.attributes.get("pads", [0] * (2 * spatial_rank))
     count_include_pad = node.attributes.get("count_include_pad", 0)
     ceil_mode = node.attributes.get("ceil_mode", 0)

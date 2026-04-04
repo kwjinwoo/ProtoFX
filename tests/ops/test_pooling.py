@@ -83,12 +83,12 @@ class TestMaxPoolHandler:
 
     def test_maxpool1d_basic(self) -> None:
         """MaxPool1d with default attributes must produce correct results."""
-        # X: (1, 1, 6), kernel_shape=[3] -> Y: (1, 1, 4)
+        # X: (1, 1, 6), kernel_shape=[3] -> Y: (1, 1, 4) (ONNX default stride=1)
         g = _make_maxpool_graph(x_shape=(1, 1, 6), y_shape=(1, 1, 4), kernel_shape=[3])
         gm = emit_graph(g)
         x = torch.randn(1, 1, 6)
         (result,) = gm(x)
-        expected = F.max_pool1d(x, kernel_size=3)
+        expected = F.max_pool1d(x, kernel_size=3, stride=1)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_maxpool1d_stride(self) -> None:
@@ -105,12 +105,12 @@ class TestMaxPoolHandler:
 
     def test_maxpool2d_basic(self) -> None:
         """MaxPool2d with default attributes must produce correct results."""
-        # X: (1, 1, 6, 6), kernel_shape=[3, 3] -> Y: (1, 1, 4, 4)
+        # X: (1, 1, 6, 6), kernel_shape=[3, 3] -> Y: (1, 1, 4, 4) (ONNX default stride=1)
         g = _make_maxpool_graph(x_shape=(1, 1, 6, 6), y_shape=(1, 1, 4, 4), kernel_shape=[3, 3])
         gm = emit_graph(g)
         x = torch.randn(1, 1, 6, 6)
         (result,) = gm(x)
-        expected = F.max_pool2d(x, kernel_size=3)
+        expected = F.max_pool2d(x, kernel_size=3, stride=1)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_maxpool2d_stride(self) -> None:
@@ -125,12 +125,12 @@ class TestMaxPoolHandler:
 
     def test_maxpool2d_padding(self) -> None:
         """MaxPool2d with symmetric padding must produce correct results."""
-        # X: (1, 1, 6, 6), kernel_shape=[3, 3], pads=[1,1,1,1] -> Y: (1, 1, 6, 6)
+        # X: (1, 1, 6, 6), kernel_shape=[3, 3], pads=[1,1,1,1] -> Y: (1, 1, 6, 6) (ONNX default stride=1)
         g = _make_maxpool_graph(x_shape=(1, 1, 6, 6), y_shape=(1, 1, 6, 6), kernel_shape=[3, 3], pads=[1, 1, 1, 1])
         gm = emit_graph(g)
         x = torch.randn(1, 1, 6, 6)
         (result,) = gm(x)
-        expected = F.max_pool2d(x, kernel_size=3, padding=1)
+        expected = F.max_pool2d(x, kernel_size=3, stride=1, padding=1)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_maxpool2d_ceil_mode(self) -> None:
@@ -147,12 +147,12 @@ class TestMaxPoolHandler:
 
     def test_maxpool2d_dilations(self) -> None:
         """MaxPool2d with dilations must produce correct results."""
-        # X: (1, 1, 8, 8), kernel_shape=[3, 3], dilations=[2, 2] -> Y: (1, 1, 4, 4)
+        # X: (1, 1, 8, 8), kernel_shape=[3, 3], dilations=[2, 2] -> Y: (1, 1, 4, 4) (ONNX default stride=1)
         g = _make_maxpool_graph(x_shape=(1, 1, 8, 8), y_shape=(1, 1, 4, 4), kernel_shape=[3, 3], dilations=[2, 2])
         gm = emit_graph(g)
         x = torch.randn(1, 1, 8, 8)
         (result,) = gm(x)
-        expected = F.max_pool2d(x, kernel_size=3, dilation=2)
+        expected = F.max_pool2d(x, kernel_size=3, stride=1, dilation=2)
         assert torch.allclose(result, expected, atol=1e-6)
 
     # -- Error cases --
@@ -236,12 +236,12 @@ class TestAveragePoolHandler:
 
     def test_avgpool1d_basic(self) -> None:
         """AveragePool1d with default attributes must produce correct results."""
-        # X: (1, 1, 6), kernel_shape=[3] -> Y: (1, 1, 4)
+        # X: (1, 1, 6), kernel_shape=[3] -> Y: (1, 1, 4) (ONNX default stride=1)
         g = _make_avgpool_graph(x_shape=(1, 1, 6), y_shape=(1, 1, 4), kernel_shape=[3])
         gm = emit_graph(g)
         x = torch.randn(1, 1, 6)
         (result,) = gm(x)
-        expected = F.avg_pool1d(x, kernel_size=3)
+        expected = F.avg_pool1d(x, kernel_size=3, stride=1)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_avgpool1d_stride(self) -> None:
@@ -257,12 +257,12 @@ class TestAveragePoolHandler:
 
     def test_avgpool2d_basic(self) -> None:
         """AveragePool2d with default attributes must produce correct results."""
-        # X: (1, 1, 6, 6), kernel_shape=[3, 3] -> Y: (1, 1, 4, 4)
+        # X: (1, 1, 6, 6), kernel_shape=[3, 3] -> Y: (1, 1, 4, 4) (ONNX default stride=1)
         g = _make_avgpool_graph(x_shape=(1, 1, 6, 6), y_shape=(1, 1, 4, 4), kernel_shape=[3, 3])
         gm = emit_graph(g)
         x = torch.randn(1, 1, 6, 6)
         (result,) = gm(x)
-        expected = F.avg_pool2d(x, kernel_size=3)
+        expected = F.avg_pool2d(x, kernel_size=3, stride=1)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_avgpool2d_stride(self) -> None:
@@ -281,7 +281,7 @@ class TestAveragePoolHandler:
         x = torch.randn(1, 1, 6, 6)
         (result,) = gm(x)
         # ONNX default count_include_pad=0 maps to PyTorch count_include_pad=False
-        expected = F.avg_pool2d(x, kernel_size=3, padding=1, count_include_pad=False)
+        expected = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1, count_include_pad=False)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_avgpool2d_count_include_pad(self) -> None:
@@ -296,7 +296,7 @@ class TestAveragePoolHandler:
         gm = emit_graph(g)
         x = torch.randn(1, 1, 6, 6)
         (result,) = gm(x)
-        expected = F.avg_pool2d(x, kernel_size=3, padding=1, count_include_pad=True)
+        expected = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1, count_include_pad=True)
         assert torch.allclose(result, expected, atol=1e-6)
 
     def test_avgpool2d_ceil_mode(self) -> None:
