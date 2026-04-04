@@ -53,7 +53,7 @@ End-to-end correctness verification against reference ONNX models.
 
 | Status | Item |
 |--------|------|
-| 📋 | Numerical parity tests vs. ONNX Runtime |
+| ✅ | Numerical parity tests vs. ONNX Runtime |
 | 📋 | Support for standard model families (ResNet, BERT, ViT, ...) |
 | 📋 | Opset version compatibility matrix |
 
