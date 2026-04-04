@@ -98,7 +98,7 @@ def _conv(
 
     x_node = args[0]
     w_node = args[1]
-    b_node = args[2]  # None if sentinel
+    b_node = args[2] if len(args) > 2 else None  # None if sentinel or omitted
 
     strides = node.attributes.get("strides", [1] * spatial_rank)
     pads_raw = node.attributes.get("pads", [0] * (2 * spatial_rank))
@@ -165,7 +165,7 @@ def _conv_transpose(
 
     x_node = args[0]
     w_node = args[1]
-    b_node = args[2]  # None if sentinel
+    b_node = args[2] if len(args) > 2 else None  # None if sentinel or omitted
 
     strides = node.attributes.get("strides", [1] * spatial_rank)
     pads_raw = node.attributes.get("pads", [0] * (2 * spatial_rank))
