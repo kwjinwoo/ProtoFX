@@ -113,7 +113,8 @@ def _gelu(
     """
     import torch.nn.functional as F
 
-    approximate = str(node.attributes.get("approximate", "none"))
+    raw = node.attributes.get("approximate", "none")
+    approximate = raw.decode() if isinstance(raw, bytes) else str(raw)
     return [fx_graph.call_function(F.gelu, args=(args[0],), kwargs={"approximate": approximate})]
 
 
@@ -245,7 +246,15 @@ def _prelu(
     """
     import torch.nn.functional as F
 
-    return [fx_graph.call_function(F.prelu, args=(args[0], args[1]))]
+    slope_node = args[1]
+    # torch.prelu requires weight to be scalar or 1D; flatten if needed.
+    slope_value = node.inputs[1]
+    if slope_value.tensor_type.shape is not None and len(slope_value.tensor_type.shape) > 1:
+        import torch
+
+        slope_node = fx_graph.call_function(torch.flatten, args=(slope_node,))
+
+    return [fx_graph.call_function(F.prelu, args=(args[0], slope_node))]
 
 
 @register_op("HardSigmoid")
