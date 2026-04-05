@@ -7,6 +7,8 @@ calls to avoid redundant exports.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,6 +23,19 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "protofx" / "models"
 
 
+def _export_kwargs_hash(export_kwargs: dict) -> str:
+    """Return an 8-character SHA-256 digest of serialized *export_kwargs*.
+
+    Args:
+        export_kwargs: The export keyword arguments to hash.
+
+    Returns:
+        An 8-character hex digest string.
+    """
+    serialized = json.dumps(export_kwargs, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode()).hexdigest()[:8]
+
+
 def _cache_key(manifest: ModelManifest) -> Path:
     """Build a relative cache path from the manifest identity fields.
 
@@ -28,14 +43,12 @@ def _cache_key(manifest: ModelManifest) -> Path:
         manifest: A validated model manifest.
 
     Returns:
-        Relative ``Path`` of the form ``{family}/{model_name}/opset{opset}/pretrained={pretrained}.onnx``.
+        Relative ``Path`` incorporating family, model_name, opset, pretrained,
+        and an export_kwargs content hash.
     """
-    return (
-        Path(manifest.family)
-        / manifest.model_name
-        / f"opset{manifest.opset}"
-        / f"pretrained={manifest.pretrained}.onnx"
-    )
+    kwargs_hash = _export_kwargs_hash(manifest.export_kwargs)
+    filename = f"pretrained={manifest.pretrained}_{kwargs_hash}.onnx"
+    return Path(manifest.family) / manifest.model_name / f"opset{manifest.opset}" / filename
 
 
 def _build_torchvision_model(manifest: ModelManifest) -> torch.nn.Module:
