@@ -266,3 +266,116 @@ class TestGatherHandler:
         (result,) = gm(x_data, idx_data)
         expected = torch.index_select(x_data, 0, idx_data)
         assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# GatherND
+# ---------------------------------------------------------------------------
+
+
+class TestGatherNDHandler:
+    """Verify that the GatherND op handler emits correct FX nodes."""
+
+    def test_forward_correctness_batch_dims_0(self) -> None:
+        """GatherND with batch_dims=0 on a 2D tensor must gather correct elements."""
+        g = Graph(name="GatherND_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 4)), name="X")
+        idx = g.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=(2, 1)), name="indices")
+        node = g.make_node(
+            op_type="GatherND",
+            inputs=[x, idx],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 4))],
+            output_names=["Y"],
+            attributes={"batch_dims": 0},
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        x_data = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+        idx_data = torch.tensor([[0], [2]], dtype=torch.long)
+        (result,) = gm(x_data, idx_data)
+        expected = x_data[torch.tensor([0, 2])]
+        assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# Where
+# ---------------------------------------------------------------------------
+
+
+class TestWhereHandler:
+    """Verify that the Where op handler emits correct FX nodes."""
+
+    def test_forward_correctness(self) -> None:
+        """Where must select elements based on condition."""
+        g = Graph(name="Where_test")
+        cond = g.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=(2, 3)), name="condition")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="X")
+        y = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="Y_in")
+        node = g.make_node(
+            op_type="Where",
+            inputs=[cond, x, y],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+            output_names=["Y_out"],
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        c = torch.tensor([[True, False, True], [False, True, False]])
+        x_data = torch.ones(2, 3)
+        y_data = torch.zeros(2, 3)
+        (result,) = gm(c, x_data, y_data)
+        expected = torch.where(c, x_data, y_data)
+        assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# And
+# ---------------------------------------------------------------------------
+
+
+class TestAndHandler:
+    """Verify that the And op handler emits correct FX nodes."""
+
+    def test_forward_correctness(self) -> None:
+        """And must compute element-wise logical AND."""
+        g = Graph(name="And_test")
+        a = g.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=(2, 3)), name="A")
+        b = g.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=(2, 3)), name="B")
+        node = g.make_node(
+            op_type="And",
+            inputs=[a, b],
+            output_types=[TensorType(dtype=DType.BOOL, shape=(2, 3))],
+            output_names=["C"],
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        a_data = torch.tensor([[True, False, True], [False, True, False]])
+        b_data = torch.tensor([[True, True, False], [False, True, True]])
+        (result,) = gm(a_data, b_data)
+        expected = torch.logical_and(a_data, b_data)
+        assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# IsNaN
+# ---------------------------------------------------------------------------
+
+
+class TestIsNaNHandler:
+    """Verify that the IsNaN op handler emits correct FX nodes."""
+
+    def test_forward_correctness(self) -> None:
+        """IsNaN must detect NaN elements."""
+        g = Graph(name="IsNaN_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)), name="X")
+        node = g.make_node(
+            op_type="IsNaN",
+            inputs=[x],
+            output_types=[TensorType(dtype=DType.BOOL, shape=(4,))],
+            output_names=["Y"],
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        x_data = torch.tensor([1.0, float("nan"), 3.0, float("nan")])
+        (result,) = gm(x_data)
+        expected = torch.isnan(x_data)
+        assert torch.equal(result, expected)
