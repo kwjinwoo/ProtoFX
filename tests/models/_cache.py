@@ -77,13 +77,35 @@ def _build_torchvision_model(manifest: ModelManifest) -> torch.nn.Module:
 def _build_transformers_model(manifest: ModelManifest) -> torch.nn.Module:
     """Instantiate a transformers model from the manifest declaration.
 
+    Uses the ``transformers`` library to build a model from a configuration
+    class matching the ``model_name`` in the manifest. When ``pretrained``
+    is ``False``, the model is initialized with random weights seeded by
+    ``manifest.seed``.
+
     Args:
         manifest: Manifest with ``family == "transformers"``.
 
+    Returns:
+        A ``torch.nn.Module`` in eval mode.
+
     Raises:
-        NotImplementedError: Always — transformers export is deferred to a future commit.
+        ImportError: If ``transformers`` is not installed.
+        AttributeError: If *model_name* is not found in ``transformers``.
     """
-    raise NotImplementedError("transformers model export is not yet implemented")
+    import transformers
+
+    if not manifest.pretrained:
+        torch.manual_seed(manifest.seed)
+
+    config_cls_name = manifest.export_kwargs.get("config_class", f"{manifest.model_name}Config")
+    model_cls_name = manifest.export_kwargs.get("model_class", f"{manifest.model_name}Model")
+
+    config_cls = getattr(transformers, config_cls_name)
+    model_cls = getattr(transformers, model_cls_name)
+
+    config = config_cls()
+    model: torch.nn.Module = model_cls(config)
+    return model.eval()
 
 
 def _build_model(manifest: ModelManifest) -> torch.nn.Module:
