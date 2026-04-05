@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
+import onnx
+
 from tests.models._manifest import load_manifest
 
 _MANIFESTS_DIR = Path(__file__).resolve().parent / "manifests"
@@ -48,3 +51,35 @@ class TestCacheKeyIsolation:
         variant = replace(base, export_kwargs={"dynamic_axes": {"input": {0: "batch"}}})
 
         assert _cache_key(base) != _cache_key(variant)
+
+
+class TestReproducibleExport:
+    """Verify that export from the same manifest produces numerically identical results."""
+
+    def test_two_cold_exports_produce_same_ort_outputs(self, tmp_path: Path) -> None:
+        """Two independent exports of the same manifest must yield identical ORT outputs."""
+        import onnxruntime as ort
+
+        from tests.models._cache import materialize
+
+        manifest = load_manifest(_MANIFESTS_DIR / "smoke" / "smoke.yaml")
+
+        cache_a = tmp_path / "cache_a"
+        cache_b = tmp_path / "cache_b"
+        path_a = materialize(manifest, cache_root=cache_a)
+        path_b = materialize(manifest, cache_root=cache_b)
+
+        rng = np.random.default_rng(manifest.seed)
+        dummy_input = rng.standard_normal(manifest.input_shapes["input"]).astype(np.float32)
+        feeds = {"input": dummy_input}
+
+        model_a = onnx.load(str(path_a))
+        sess_a = ort.InferenceSession(model_a.SerializeToString())
+        out_a = sess_a.run(None, feeds)
+
+        model_b = onnx.load(str(path_b))
+        sess_b = ort.InferenceSession(model_b.SerializeToString())
+        out_b = sess_b.run(None, feeds)
+
+        for i, (a, b) in enumerate(zip(out_a, out_b, strict=True)):
+            np.testing.assert_allclose(a, b, rtol=0, atol=0, err_msg=f"Output {i} differs between two cold exports")
