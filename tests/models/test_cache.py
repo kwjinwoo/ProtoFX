@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from tests.models._manifest import load_manifest
@@ -34,3 +35,16 @@ class TestMaterialize:
 
         assert path1 == path2
         assert path2.stat().st_mtime == mtime1, "File was re-exported instead of reused from cache"
+
+
+class TestCacheKeyIsolation:
+    """Verify that cache keys differ when export-affecting fields differ."""
+
+    def test_different_export_kwargs_produce_different_cache_paths(self) -> None:
+        """Manifests that differ only in export_kwargs must not share a cache path."""
+        from tests.models._cache import _cache_key
+
+        base = load_manifest(_MANIFESTS_DIR / "smoke" / "smoke.yaml")
+        variant = replace(base, export_kwargs={"dynamic_axes": {"input": {0: "batch"}}})
+
+        assert _cache_key(base) != _cache_key(variant)
