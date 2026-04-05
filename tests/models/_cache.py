@@ -154,13 +154,17 @@ def _export_onnx(model: torch.nn.Module, manifest: ModelManifest, dest: Path) ->
 
     args = tuple(dummy_inputs[n] for n in input_names)
 
+    # Filter out builder-specific keys that are not valid torch.onnx.export kwargs.
+    _BUILDER_KEYS = {"config_class", "model_class"}
+    onnx_kwargs = {k: v for k, v in manifest.export_kwargs.items() if k not in _BUILDER_KEYS}
+
     torch.onnx.export(
         model,
         args,
         str(dest),
         opset_version=manifest.opset,
         input_names=input_names,
-        **manifest.export_kwargs,
+        **onnx_kwargs,
     )
     logger.info("Exported ONNX model to %s", dest)
 
