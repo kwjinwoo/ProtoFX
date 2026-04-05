@@ -434,12 +434,13 @@ def _gather(
 ) -> list[torch.fx.Node]:
     """Emit ``torch.index_select`` for the ONNX Gather op.
 
-    Indices are statically extracted from the second input. For scalar indices,
-    the gathered dimension is squeezed to match ONNX semantics.
+    Supports both static indices (from initializers) and dynamic indices
+    (from graph inputs). For scalar indices, the gathered dimension is
+    squeezed to match ONNX semantics.
 
     Args:
         node: The IR Gather node.
-        args: Two-element list; first is the data FX node, second is indices (unused).
+        args: Two-element list; first is the data FX node, second is indices FX node.
         fx_graph: The FX graph being constructed.
         module: The root module (unused for Gather).
 
@@ -450,20 +451,23 @@ def _gather(
 
     axis = int(node.attributes.get("axis", 0))
     indices_value = node.inputs[1]
-    if indices_value.data is None:
-        msg = f"Gather: indices input ({indices_value.name or indices_value.id}) has no static data"
-        raise NotImplementedError(msg)
 
-    indices_np = indices_value.data
-    is_scalar = indices_np.ndim == 0
-
-    # Flatten indices to 1D for torch.index_select
-    flat_indices = indices_np.flatten().tolist()
-    idx_tensor = torch.tensor(flat_indices, dtype=torch.long)
-    # Register as buffer for FX graph
-    attr_name = f"_gather_indices_{node.id}"
-    module.register_buffer(attr_name, idx_tensor)
-    idx_node = fx_graph.get_attr(attr_name)
+    if indices_value.data is not None:
+        # Static indices: register as buffer
+        indices_np = indices_value.data
+        is_scalar = indices_np.ndim == 0
+        flat_indices = indices_np.flatten().tolist()
+        idx_tensor = torch.tensor(flat_indices, dtype=torch.long)
+        attr_name = f"_gather_indices_{node.id}"
+        module.register_buffer(attr_name, idx_tensor)
+        idx_node = fx_graph.get_attr(attr_name)
+    else:
+        # Dynamic indices: use the FX node directly
+        is_scalar = indices_value.tensor_type is not None and indices_value.tensor_type.shape == ()
+        idx_node = args[1]
+        # Flatten to 1D for torch.index_select if needed
+        if not is_scalar:
+            idx_node = fx_graph.call_function(torch.flatten, args=(idx_node,))
 
     result = fx_graph.call_function(torch.index_select, args=(args[0], axis, idx_node))
 
