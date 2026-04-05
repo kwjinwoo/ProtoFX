@@ -1,0 +1,12 @@
+family: torchvision
+model_name: resnet18
+opset: 17
+pretrained: false
+seed: 42
+input_shapes:
+  input: [1, 3, 224, 224]
+tolerances:
+  rtol: 1.0e-5
+  atol: 1.0e-5
+required_extras:
+  - models
