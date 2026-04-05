@@ -19,6 +19,7 @@ _UNARY_OPS: list[tuple[str, Callable[..., torch.Tensor]]] = [
     ("Exp", torch.exp),
     ("Log", torch.log),
     ("Sqrt", torch.sqrt),
+    ("Erf", torch.erf),
 ]
 
 
