@@ -246,3 +246,23 @@ class TestGatherHandler:
         (result,) = gm(x)
         expected = torch.index_select(x, 0, torch.tensor([2])).squeeze(0)
         assert torch.equal(result, expected)
+
+    def test_forward_correctness_dynamic_indices(self) -> None:
+        """Gather with dynamic indices (graph input) must work correctly."""
+        g = Graph(name="Gather_dynamic_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5, 3)), name="X")
+        idx = g.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=(2,)), name="indices")
+        node = g.make_node(
+            op_type="Gather",
+            inputs=[x, idx],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+            output_names=["Y"],
+            attributes={"axis": 0},
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        x_data = torch.arange(15, dtype=torch.float32).reshape(5, 3)
+        idx_data = torch.tensor([1, 3], dtype=torch.long)
+        (result,) = gm(x_data, idx_data)
+        expected = torch.index_select(x_data, 0, idx_data)
+        assert torch.equal(result, expected)
