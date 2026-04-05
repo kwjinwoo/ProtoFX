@@ -19,6 +19,7 @@ models = [
     "torchvision>=0.18",
     "transformers>=4.40",
     "pyyaml>=6.0",
+    "onnxscript>=0.6",
 ]
 
 [build-system]
