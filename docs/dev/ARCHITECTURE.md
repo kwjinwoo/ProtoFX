@@ -90,6 +90,24 @@ Shared helper modules.
 - ONNX ↔ PyTorch type mapping
 - Tensor conversion helpers
 
+## Validation Structure
+
+ProtoFX treats validation as part of the architecture, not as an ad hoc scripting concern.
+
+- `tests/ops/` verifies handler behavior and emitted FX structure with small targeted fixtures.
+- `tests/parity/` verifies op-level ONNX Runtime parity using synthetic models built in code.
+- `tests/models/` is the reserved suite boundary for standard model-family validation such as ResNet, BERT,
+	and ViT.
+
+Reference-model validation follows a different asset boundary than small parity tests.
+
+- Large ONNX artifacts are externalized and materialized into a cache outside the git worktree.
+- The repository stores human-reviewable manifests and tolerances rather than large vendored model binaries.
+- Helper tooling may later exist under `scripts/` or another utility location, but pytest suites and their
+	manifests remain the authoritative validation surface.
+
+See `docs/dev/MODEL_VALIDATION.md` for the detailed validation-suite structure and asset policy.
+
 ## Architectural Boundary
 
 ProtoFX intentionally separates three concerns:
@@ -124,7 +142,9 @@ The current architecture documentation is intentionally distributed:
 - `docs/adr/0001-thin-graph-owned-ir.md` — accepted IR architecture decision.
 - `docs/adr/0002-documentation-system.md` — accepted documentation and decision-recording model.
 - `docs/adr/0003-milestone-1-ir-contract-reconciliation.md` — accepted Milestone 1 contract alignment.
+- `docs/adr/0004-externalized-reference-model-validation-assets.md` — accepted reference-model asset policy.
 - `docs/dev/IR.md` — IR documentation hub.
+- `docs/dev/MODEL_VALIDATION.md` — reference-model validation suite structure and asset rules.
 - `docs/dev/ir/invariants.md` — IR invariants and validation-facing rules.
 - `docs/dev/ir/type-system.md` — tensor metadata and value classification model.
 - `docs/dev/ir/graph-model.md` — graph ownership and mutation APIs.
