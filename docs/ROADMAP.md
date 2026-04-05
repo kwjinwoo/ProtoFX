@@ -36,8 +36,8 @@ Handlers for the most common ONNX ops to support real-world models.
 
 | Status | Item |
 |--------|------|
-| ✅ | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, Abs, Neg, Exp, Log, Sqrt, Pow) |
-| ✅ | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, Concat, Slice, Identity, Cast, Expand, Gather) |
+| ✅ | Element-wise ops (Add, Sub, Mul, Div, Relu, Sigmoid, Tanh, Abs, Neg, Exp, Log, Sqrt, Pow, Erf, Where, And, IsNaN) |
+| ✅ | Tensor ops (Reshape, Transpose, Flatten, Squeeze, Unsqueeze, Concat, Slice, Identity, Cast, Expand, Gather, GatherND) |
 | ✅ | Reduction ops (ReduceMean, ReduceSum, ReduceMax, ...) |
 | ✅ | Linear algebra (MatMul, Gemm) |
 | ✅ | Convolution (Conv, ConvTranspose) |
@@ -59,7 +59,7 @@ Detailed model-validation structure is documented in `docs/dev/MODEL_VALIDATION.
 |--------|------|
 | ✅ | Numerical parity tests vs. ONNX Runtime |
 | ✅ | Manifest-driven reference-model validation infrastructure (externalized assets, cache-backed materialization) |
-| 📋 | Support for standard model families (ResNet, BERT, ViT, ...) in the reference-model suite |
+| ✅ | Support for standard model families (ResNet18, BERT, ViT-B/16) in the reference-model suite |
 | 📋 | Opset version compatibility matrix |
 
 ---
@@ -74,6 +74,19 @@ Verify that the output `GraphModule` works correctly with PyTorch tooling.
 | 📋 | FX-based quantization (`torch.ao.quantization`) |
 | 📋 | Custom FX pass compatibility |
 | 📋 | `torch.export` round-trip |
+
+---
+
+## Milestone 5 — Model Family Expansion
+
+Broaden reference-model coverage beyond the initial three families.
+
+| Status | Item |
+|--------|------|
+| 📋 | Additional vision models (ResNet50, EfficientNet, MobileNet, ...) |
+| 📋 | Additional NLP models (GPT-2, RoBERTa, DistilBERT, ...) |
+| 📋 | Multi-modal models (CLIP, ...) |
+| 📋 | Op handler coverage for new model families |
 
 ---
 
