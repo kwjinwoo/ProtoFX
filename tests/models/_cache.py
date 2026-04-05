@@ -66,6 +66,8 @@ def _build_torchvision_model(manifest: ModelManifest) -> torch.nn.Module:
     """
     import torchvision.models as tvm
 
+    if not manifest.pretrained:
+        torch.manual_seed(manifest.seed)
     factory = getattr(tvm, manifest.model_name)
     weights = "DEFAULT" if manifest.pretrained else None
     model: torch.nn.Module = factory(weights=weights)
@@ -116,6 +118,7 @@ def _export_onnx(model: torch.nn.Module, manifest: ModelManifest, dest: Path) ->
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
 
+    torch.manual_seed(manifest.seed)
     dummy_inputs: dict[str, torch.Tensor] = {}
     for name, shape in manifest.input_shapes.items():
         dummy_inputs[name] = torch.randn(*shape)

@@ -100,7 +100,7 @@ def assert_model_parity(onnx_path: Path, manifest: ModelManifest) -> None:
     """
     model = onnx.load(str(onnx_path))
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(manifest.seed)
     inputs: dict[str, np.ndarray] = {}
     for name, shape in manifest.input_shapes.items():
         inputs[name] = rng.standard_normal(shape).astype(np.float32)
