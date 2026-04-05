@@ -20,6 +20,8 @@ class ModelManifest:
         pretrained: Whether to load pretrained weights during export.
         seed: Random seed for deterministic model initialization and input generation.
         input_shapes: Mapping from input name to shape list (e.g. ``{"input": [1, 3, 224, 224]}``).
+        input_dtypes: Optional mapping from input name to dtype string (e.g. ``{"input_ids": "int64"}``). Defaults
+            to ``"float32"`` for inputs not listed.
         tolerances: Numerical comparison tolerances with ``rtol`` and ``atol`` keys.
         required_extras: ``pyproject.toml`` optional-dependency groups needed to materialize this model.
         export_kwargs: Extra keyword arguments forwarded to ``torch.onnx.export``.
@@ -33,6 +35,7 @@ class ModelManifest:
     input_shapes: dict[str, list[int]]
     tolerances: dict[str, float]
     required_extras: list[str]
+    input_dtypes: dict[str, str] = field(default_factory=dict)
     export_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -76,6 +79,11 @@ def load_manifest(path: Path) -> ModelManifest:
         msg = "required_extras must be a list of strings"
         raise ValueError(msg)
 
+    input_dtypes_raw = raw.get("input_dtypes", {})
+    if not isinstance(input_dtypes_raw, dict):
+        msg = "input_dtypes must be a mapping from input name to dtype string"
+        raise ValueError(msg)
+
     return ModelManifest(
         family=str(raw["family"]),
         model_name=str(raw["model_name"]),
@@ -85,5 +93,6 @@ def load_manifest(path: Path) -> ModelManifest:
         input_shapes={str(k): list(v) for k, v in raw["input_shapes"].items()},
         tolerances={str(k): float(v) for k, v in tolerances.items()},
         required_extras=[str(e) for e in required_extras],
+        input_dtypes={str(k): str(v) for k, v in input_dtypes_raw.items()},
         export_kwargs=raw.get("export_kwargs", {}),
     )

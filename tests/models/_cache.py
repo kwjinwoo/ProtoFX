@@ -121,7 +121,12 @@ def _export_onnx(model: torch.nn.Module, manifest: ModelManifest, dest: Path) ->
     torch.manual_seed(manifest.seed)
     dummy_inputs: dict[str, torch.Tensor] = {}
     for name, shape in manifest.input_shapes.items():
-        dummy_inputs[name] = torch.randn(*shape)
+        dtype_str = manifest.input_dtypes.get(name, "float32")
+        torch_dtype = getattr(torch, dtype_str)
+        if torch_dtype.is_floating_point:
+            dummy_inputs[name] = torch.randn(*shape, dtype=torch_dtype)
+        else:
+            dummy_inputs[name] = torch.ones(*shape, dtype=torch_dtype)
 
     input_names = list(manifest.input_shapes.keys())
 

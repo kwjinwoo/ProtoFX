@@ -103,7 +103,12 @@ def assert_model_parity(onnx_path: Path, manifest: ModelManifest) -> None:
     rng = np.random.default_rng(manifest.seed)
     inputs: dict[str, np.ndarray] = {}
     for name, shape in manifest.input_shapes.items():
-        inputs[name] = rng.standard_normal(shape).astype(np.float32)
+        dtype_str = manifest.input_dtypes.get(name, "float32")
+        np_dtype = np.dtype(dtype_str)
+        if np.issubdtype(np_dtype, np.floating):
+            inputs[name] = rng.standard_normal(shape).astype(np_dtype)
+        else:
+            inputs[name] = np.ones(shape, dtype=np_dtype)
 
     ort_outputs = _run_ort(model, inputs)
     pfx_outputs = _run_protofx(model, inputs)
