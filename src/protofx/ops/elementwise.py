@@ -297,3 +297,26 @@ def _sqrt(
     import torch
 
     return [fx_graph.call_function(torch.sqrt, args=(args[0],))]
+
+
+@register_op("Erf")
+def _erf(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.erf`` for the ONNX Erf op.
+
+    Args:
+        node: The IR Erf node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Erf).
+
+    Returns:
+        A single-element list containing the erf FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.erf, args=(args[0],))]
