@@ -15,6 +15,11 @@ dev = [
     "pytest>=8.0",
     "pre-commit>=4.5.1",
 ]
+models = [
+    "torchvision>=0.18",
+    "transformers>=4.40",
+    "pyyaml>=6.0",
+]
 
 [build-system]
 requires = ["setuptools>=75.0"]
@@ -44,6 +49,11 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["protofx"]
+
+[tool.pytest.ini_options]
+markers = [
+    "model_validation: marks tests requiring reference-model assets (deselect with '-m \"not model_validation\"')",
+]
 
 [dependency-groups]
 dev = [
