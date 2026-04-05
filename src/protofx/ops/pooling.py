@@ -49,7 +49,8 @@ def _check_auto_pad(node: Node) -> None:
     Raises:
         NotImplementedError: If ``auto_pad`` is set to a value other than ``NOTSET``.
     """
-    auto_pad = node.attributes.get("auto_pad", "NOTSET")
+    auto_pad_raw = node.attributes.get("auto_pad", "NOTSET")
+    auto_pad = auto_pad_raw.decode() if isinstance(auto_pad_raw, bytes) else str(auto_pad_raw)
     if auto_pad != "NOTSET":
         msg = f"{node.op_type}: auto_pad='{auto_pad}' is not supported"
         raise NotImplementedError(msg)
