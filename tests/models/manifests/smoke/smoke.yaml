@@ -1,2 +1,9 @@
-# Placeholder — will be completed in the next commit.
 family: torchvision
+model_name: squeezenet1_0
+opset: 17
+pretrained: false
+input_shapes:
+  input: [1, 3, 224, 224]
+tolerances:
+  rtol: 1.0e-5
+  atol: 1.0e-5
