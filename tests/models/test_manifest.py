@@ -27,6 +27,24 @@ class TestLoadManifest:
         assert "rtol" in manifest.tolerances
         assert "atol" in manifest.tolerances
 
+    def test_smoke_manifest_has_seed(self) -> None:
+        """Smoke manifest must declare an integer seed for reproducible export."""
+        from tests.models._manifest import load_manifest
+
+        manifest = load_manifest(_MANIFESTS_DIR / "smoke" / "smoke.yaml")
+
+        assert isinstance(manifest.seed, int)
+
+    def test_smoke_manifest_has_required_extras(self) -> None:
+        """Smoke manifest must declare required_extras as a non-empty list."""
+        from tests.models._manifest import load_manifest
+
+        manifest = load_manifest(_MANIFESTS_DIR / "smoke" / "smoke.yaml")
+
+        assert isinstance(manifest.required_extras, list)
+        assert len(manifest.required_extras) > 0
+        assert all(isinstance(e, str) for e in manifest.required_extras)
+
     def test_missing_required_field_raises(self, tmp_path: Path) -> None:
         """A manifest missing a required field must raise ValueError."""
         from tests.models._manifest import load_manifest
