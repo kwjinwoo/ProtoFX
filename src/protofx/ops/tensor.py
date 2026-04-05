@@ -476,3 +476,62 @@ def _gather(
         result = fx_graph.call_function(torch.squeeze, args=(result, axis))
 
     return [result]
+
+
+# ---------------------------------------------------------------------------
+# GatherND
+# ---------------------------------------------------------------------------
+
+
+def _gather_nd_impl(data: torch.Tensor, indices: torch.Tensor, batch_dims: int = 0) -> torch.Tensor:
+    """Pure-Python GatherND implementation matching ONNX semantics.
+
+    Args:
+        data: The data tensor to gather from.
+        indices: Index tensor whose last dimension indexes into *data*.
+        batch_dims: Number of leading batch dimensions.
+
+    Returns:
+        Gathered output tensor.
+    """
+    if batch_dims > 0:
+        batch_shape = data.shape[:batch_dims]
+        data_inner = data.reshape(-1, *data.shape[batch_dims:])
+        idx_inner = indices.reshape(-1, *indices.shape[batch_dims:])
+        batch_size = data_inner.shape[0]
+        results = []
+        for i in range(batch_size):
+            results.append(_gather_nd_impl(data_inner[i], idx_inner[i], batch_dims=0))
+        return torch.stack(results).reshape(*batch_shape, *results[0].shape)
+
+    idx_depth = indices.shape[-1]
+    idx_shape = indices.shape[:-1]
+
+    indices_flat = indices.reshape(-1, idx_depth)
+    index_tuples = tuple(indices_flat[:, d] for d in range(idx_depth))
+    gathered = data[index_tuples]
+
+    out_shape = (*idx_shape, *data.shape[idx_depth:])
+    return gathered.reshape(out_shape)
+
+
+@register_op("GatherND")
+def _gather_nd(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit a GatherND call for the ONNX GatherND op.
+
+    Args:
+        node: The IR GatherND node.
+        args: Two-element list; first is data FX node, second is indices FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for GatherND).
+
+    Returns:
+        A single-element list containing the GatherND FX call_function node.
+    """
+    batch_dims = int(node.attributes.get("batch_dims", 0))
+    return [fx_graph.call_function(_gather_nd_impl, args=(args[0], args[1], batch_dims))]

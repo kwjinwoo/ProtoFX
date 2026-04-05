@@ -320,3 +320,77 @@ def _erf(
     import torch
 
     return [fx_graph.call_function(torch.erf, args=(args[0],))]
+
+
+# ---------------------------------------------------------------------------
+# Comparison / logical ops
+# ---------------------------------------------------------------------------
+
+
+@register_op("Where")
+def _where(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.where`` for the ONNX Where op.
+
+    Args:
+        node: The IR Where node.
+        args: Three-element list ``[condition, X, Y]``.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Where).
+
+    Returns:
+        A single-element list containing the where FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.where, args=(args[0], args[1], args[2]))]
+
+
+@register_op("And")
+def _and(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.logical_and`` for the ONNX And op.
+
+    Args:
+        node: The IR And node.
+        args: Two-element list containing the input FX nodes.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for And).
+
+    Returns:
+        A single-element list containing the logical_and FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.logical_and, args=(args[0], args[1]))]
+
+
+@register_op("IsNaN")
+def _isnan(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.isnan`` for the ONNX IsNaN op.
+
+    Args:
+        node: The IR IsNaN node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for IsNaN).
+
+    Returns:
+        A single-element list containing the isnan FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.isnan, args=(args[0],))]
