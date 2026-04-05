@@ -58,7 +58,7 @@ Detailed model-validation structure is documented in `docs/dev/MODEL_VALIDATION.
 | Status | Item |
 |--------|------|
 | ✅ | Numerical parity tests vs. ONNX Runtime |
-| 📋 | Manifest-driven reference-model validation infrastructure (externalized assets, cache-backed materialization) |
+| ✅ | Manifest-driven reference-model validation infrastructure (externalized assets, cache-backed materialization) |
 | 📋 | Support for standard model families (ResNet, BERT, ViT, ...) in the reference-model suite |
 | 📋 | Opset version compatibility matrix |
 
