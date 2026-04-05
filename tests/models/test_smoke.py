@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-_MANIFESTS_DIR = Path(__file__).resolve().parent / "manifests"
+from tests.models._manifest import ModelManifest
 
 
 @pytest.mark.model_validation
 class TestSmokeModelParity:
     """End-to-end ORT vs ProtoFX parity for a small torchvision model declared via manifest."""
 
-    def test_squeezenet_smoke_parity(self, materialized_model: tuple[Path, dict]) -> None:
+    def test_squeezenet_smoke_parity(self, materialized_model: tuple[Path, ModelManifest]) -> None:
         """SqueezeNet smoke manifest must produce numerically close ORT and ProtoFX outputs."""
         from tests.models.conftest import assert_model_parity
 
-        onnx_path, manifest_data = materialized_model
-        assert_model_parity(onnx_path, manifest_data)
+        onnx_path, manifest = materialized_model
+        assert_model_parity(onnx_path, manifest)
