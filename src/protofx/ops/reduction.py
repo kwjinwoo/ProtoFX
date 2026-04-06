@@ -72,6 +72,8 @@ def _read_noop_with_empty_axes(node: Node) -> bool:
 def _make_simple_reduce_handler(
     op_type: str,
     torch_fn_path: str,
+    *,
+    opset_range: tuple[int, int] | None = None,
 ) -> Callable[..., list[torch.fx.Node]]:
     """Create a reduce handler for ops that map directly to a single torch function.
 
@@ -81,12 +83,14 @@ def _make_simple_reduce_handler(
     Args:
         op_type: The ONNX op type string for registration.
         torch_fn_path: Dotted attribute path on the ``torch`` module (e.g. ``"mean"``).
+        opset_range: Inclusive ``(min_opset, max_opset)`` of supported
+            ONNX opset versions. ``None`` means no version constraint.
 
     Returns:
         A registered op handler function.
     """
 
-    @register_op(op_type)
+    @register_op(op_type, opset_range=opset_range)
     def _handler(
         node: Node,
         args: list[torch.fx.Node | None],
@@ -134,11 +138,11 @@ def _make_simple_reduce_handler(
 # Register simple reduction ops
 # ---------------------------------------------------------------------------
 
-_reduce_mean = _make_simple_reduce_handler("ReduceMean", "mean")
-_reduce_sum = _make_simple_reduce_handler("ReduceSum", "sum")
-_reduce_max = _make_simple_reduce_handler("ReduceMax", "amax")
-_reduce_min = _make_simple_reduce_handler("ReduceMin", "amin")
-_reduce_logsumexp = _make_simple_reduce_handler("ReduceLogSumExp", "logsumexp")
+_reduce_mean = _make_simple_reduce_handler("ReduceMean", "mean", opset_range=(11, 21))
+_reduce_sum = _make_simple_reduce_handler("ReduceSum", "sum", opset_range=(11, 21))
+_reduce_max = _make_simple_reduce_handler("ReduceMax", "amax", opset_range=(11, 21))
+_reduce_min = _make_simple_reduce_handler("ReduceMin", "amin", opset_range=(11, 21))
+_reduce_logsumexp = _make_simple_reduce_handler("ReduceLogSumExp", "logsumexp", opset_range=(11, 21))
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +150,7 @@ _reduce_logsumexp = _make_simple_reduce_handler("ReduceLogSumExp", "logsumexp")
 # ---------------------------------------------------------------------------
 
 
-@register_op("ReduceProd")
+@register_op("ReduceProd", opset_range=(11, 21))
 def _reduce_prod(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -227,7 +231,7 @@ def _sum_kwargs(axes: list[int], keepdims: bool) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
-@register_op("ReduceL1")
+@register_op("ReduceL1", opset_range=(11, 21))
 def _reduce_l1(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -263,7 +267,7 @@ def _reduce_l1(
 # ---------------------------------------------------------------------------
 
 
-@register_op("ReduceL2")
+@register_op("ReduceL2", opset_range=(11, 21))
 def _reduce_l2(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -300,7 +304,7 @@ def _reduce_l2(
 # ---------------------------------------------------------------------------
 
 
-@register_op("ReduceLogSum")
+@register_op("ReduceLogSum", opset_range=(11, 21))
 def _reduce_logsum(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -333,7 +337,7 @@ def _reduce_logsum(
 # ---------------------------------------------------------------------------
 
 
-@register_op("ReduceSumSquare")
+@register_op("ReduceSumSquare", opset_range=(11, 21))
 def _reduce_sumsquare(
     node: Node,
     args: list[torch.fx.Node | None],
