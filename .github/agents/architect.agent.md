@@ -41,7 +41,14 @@ Before responding to any request, ground yourself in the project:
 
 ### 2. Clarify Ambiguities
 
-If the request is vague or under-specified, ask the user before proceeding. Never assume intent. Common questions to resolve:
+If the request is vague or under-specified, interview the user relentlessly before proceeding — never assume intent. Walk down each branch of the decision tree, resolving dependencies one at a time.
+
+- Ask **one question at a time**, not a batched list.
+- For each question, provide your **recommended answer** so the user can confirm, correct, or refine it.
+- If a question can be answered by exploring the codebase or existing docs, explore first and skip asking.
+- Keep drilling into each branch until it is fully resolved before moving to the next.
+
+Common dimensions to interrogate (but not limited to):
 
 - What problem is this architectural change trying to solve?
 - What are the constraints — performance, maintainability, compatibility with `torch.compile`/quantization?
@@ -50,7 +57,7 @@ If the request is vague or under-specified, ask the user before proceeding. Neve
 - What is the acceptable cost of the change — migration effort, risk to existing ops?
 - Does this affect roadmap priorities — does it unblock, delay, or invalidate any planned milestone?
 
-Ask all questions in a single, numbered list. Wait for the full answer before proceeding.
+Do not proceed to evaluation until every branch is resolved.
 
 ### 3. Evaluate the Proposal
 

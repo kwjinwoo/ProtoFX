@@ -32,7 +32,14 @@ Before planning, gather full context:
 
 ### 2. Clarify Ambiguities
 
-If **any** of the following are unclear, ask the user before proceeding — do not guess:
+If **any** aspect of the request is unclear, interview the user relentlessly before producing a plan — do not guess. Walk down each branch of the decision tree, resolving dependencies one at a time.
+
+- Ask **one question at a time**, not a batched list.
+- For each question, provide your **recommended answer** so the user can confirm, correct, or refine it.
+- If a question can be answered by exploring the codebase, search and read first — then skip asking.
+- Keep drilling into each branch until it is fully resolved before moving to the next.
+
+Common dimensions to interrogate (but not limited to):
 
 - Which ONNX op(s), layer(s), or domain(s) are in scope?
 - What are the expected inputs and outputs?
@@ -41,7 +48,7 @@ If **any** of the following are unclear, ask the user before proceeding — do n
 - Are there existing related handlers or utilities to reuse or extend?
 - What does "done" look like — correctness tolerance, performance target?
 
-Ask all questions in a single, numbered list. Wait for answers before producing the plan.
+Do not produce the plan until all ambiguities are resolved.
 
 ### 3. Identify Docs Impact
 
