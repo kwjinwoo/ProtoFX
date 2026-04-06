@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-@register_op("Add")
+@register_op("Add", opset_range=(11, 21))
 def _add(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -41,7 +41,7 @@ def _add(
     return [fx_graph.call_function(torch.add, args=(args[0], args[1]))]
 
 
-@register_op("Sub")
+@register_op("Sub", opset_range=(11, 21))
 def _sub(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -64,7 +64,7 @@ def _sub(
     return [fx_graph.call_function(torch.sub, args=(args[0], args[1]))]
 
 
-@register_op("Mul")
+@register_op("Mul", opset_range=(11, 21))
 def _mul(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -87,7 +87,7 @@ def _mul(
     return [fx_graph.call_function(torch.mul, args=(args[0], args[1]))]
 
 
-@register_op("Div")
+@register_op("Div", opset_range=(11, 21))
 def _div(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -110,7 +110,7 @@ def _div(
     return [fx_graph.call_function(torch.div, args=(args[0], args[1]))]
 
 
-@register_op("Pow")
+@register_op("Pow", opset_range=(11, 21))
 def _pow(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -138,7 +138,7 @@ def _pow(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Sigmoid")
+@register_op("Sigmoid", opset_range=(11, 21))
 def _sigmoid(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -161,7 +161,7 @@ def _sigmoid(
     return [fx_graph.call_function(torch.sigmoid, args=(args[0],))]
 
 
-@register_op("Tanh")
+@register_op("Tanh", opset_range=(11, 21))
 def _tanh(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -184,7 +184,7 @@ def _tanh(
     return [fx_graph.call_function(torch.tanh, args=(args[0],))]
 
 
-@register_op("Abs")
+@register_op("Abs", opset_range=(11, 21))
 def _abs(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -207,7 +207,7 @@ def _abs(
     return [fx_graph.call_function(torch.abs, args=(args[0],))]
 
 
-@register_op("Neg")
+@register_op("Neg", opset_range=(11, 21))
 def _neg(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -230,7 +230,7 @@ def _neg(
     return [fx_graph.call_function(torch.neg, args=(args[0],))]
 
 
-@register_op("Exp")
+@register_op("Exp", opset_range=(11, 21))
 def _exp(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -253,7 +253,7 @@ def _exp(
     return [fx_graph.call_function(torch.exp, args=(args[0],))]
 
 
-@register_op("Log")
+@register_op("Log", opset_range=(11, 21))
 def _log(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -276,7 +276,7 @@ def _log(
     return [fx_graph.call_function(torch.log, args=(args[0],))]
 
 
-@register_op("Sqrt")
+@register_op("Sqrt", opset_range=(11, 21))
 def _sqrt(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -299,7 +299,7 @@ def _sqrt(
     return [fx_graph.call_function(torch.sqrt, args=(args[0],))]
 
 
-@register_op("Erf")
+@register_op("Erf", opset_range=(11, 21))
 def _erf(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -327,7 +327,7 @@ def _erf(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Where")
+@register_op("Where", opset_range=(11, 21))
 def _where(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -350,7 +350,7 @@ def _where(
     return [fx_graph.call_function(torch.where, args=(args[0], args[1], args[2]))]
 
 
-@register_op("And")
+@register_op("And", opset_range=(11, 21))
 def _and(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -373,7 +373,7 @@ def _and(
     return [fx_graph.call_function(torch.logical_and, args=(args[0], args[1]))]
 
 
-@register_op("IsNaN")
+@register_op("IsNaN", opset_range=(13, 21))
 def _isnan(
     node: Node,
     args: list[torch.fx.Node | None],
