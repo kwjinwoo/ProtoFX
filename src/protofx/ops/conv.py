@@ -68,7 +68,7 @@ def _onnx_pads_to_torch(pads: list[int]) -> tuple[int, ...]:
     return tuple(begins[i] for i in range(n) if begins[i] == ends[i]) if begins == ends else tuple(pads)
 
 
-@register_op("Conv")
+@register_op("Conv", opset_range=(11, 21))
 def _conv(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -135,7 +135,7 @@ def _conv(
     ]
 
 
-@register_op("ConvTranspose")
+@register_op("ConvTranspose", opset_range=(11, 21))
 def _conv_transpose(
     node: Node,
     args: list[torch.fx.Node | None],

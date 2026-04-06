@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from protofx.ir.node import Node
 
 
-@register_op("BatchNormalization")
+@register_op("BatchNormalization", opset_range=(15, 21))
 def _batch_normalization(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -69,7 +69,7 @@ def _batch_normalization(
     ]
 
 
-@register_op("LayerNormalization")
+@register_op("LayerNormalization", opset_range=(17, 21))
 def _layer_normalization(
     node: Node,
     args: list[torch.fx.Node | None],

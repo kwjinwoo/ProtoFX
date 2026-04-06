@@ -56,7 +56,7 @@ def _check_auto_pad(node: Node) -> None:
         raise NotImplementedError(msg)
 
 
-@register_op("MaxPool")
+@register_op("MaxPool", opset_range=(11, 21))
 def _max_pool(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -133,7 +133,7 @@ def _max_pool(
     ]
 
 
-@register_op("AveragePool")
+@register_op("AveragePool", opset_range=(11, 21))
 def _average_pool(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -204,7 +204,7 @@ def _average_pool(
     ]
 
 
-@register_op("GlobalAveragePool")
+@register_op("GlobalAveragePool", opset_range=(11, 21))
 def _global_average_pool(
     node: Node,
     args: list[torch.fx.Node | None],

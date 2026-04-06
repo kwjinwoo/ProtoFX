@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from protofx.ir.node import Node
 
 
-@register_op("MatMul")
+@register_op("MatMul", opset_range=(11, 21))
 def _matmul(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -36,7 +36,7 @@ def _matmul(
     return [fx_graph.call_function(torch.matmul, args=(args[0], args[1]))]
 
 
-@register_op("Gemm")
+@register_op("Gemm", opset_range=(11, 21))
 def _gemm(
     node: Node,
     args: list[torch.fx.Node | None],
