@@ -112,7 +112,7 @@ def emit_graph(graph: Graph) -> torch.fx.GraphModule:
                 msg = f"unresolved input value {inp_value.id!r} (kind={inp_value.kind.name})"
                 raise ValueError(msg)
 
-        handler = dispatch_op(ir_node.op_type)
+        handler = dispatch_op(ir_node.op_type, ir_node.opset_version)
         fx_outputs = handler(ir_node, args, fx_graph, root)
 
         # Map IR outputs to FX outputs by slot position
