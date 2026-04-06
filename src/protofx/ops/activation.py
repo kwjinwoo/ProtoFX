@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from protofx.ir.node import Node
 
 
-@register_op("Relu")
+@register_op("Relu", opset_range=(11, 21))
 def _relu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -36,7 +36,7 @@ def _relu(
     return [fx_graph.call_function(torch.nn.functional.relu, args=(args[0],))]
 
 
-@register_op("Softmax")
+@register_op("Softmax", opset_range=(13, 21))
 def _softmax(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -63,7 +63,7 @@ def _softmax(
     return [fx_graph.call_function(F.softmax, args=(args[0],), kwargs={"dim": int(axis)})]
 
 
-@register_op("LogSoftmax")
+@register_op("LogSoftmax", opset_range=(13, 21))
 def _log_softmax(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -90,7 +90,7 @@ def _log_softmax(
     return [fx_graph.call_function(F.log_softmax, args=(args[0],), kwargs={"dim": int(axis)})]
 
 
-@register_op("Gelu")
+@register_op("Gelu", opset_range=(20, 21))
 def _gelu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -118,7 +118,7 @@ def _gelu(
     return [fx_graph.call_function(F.gelu, args=(args[0],), kwargs={"approximate": approximate})]
 
 
-@register_op("Elu")
+@register_op("Elu", opset_range=(11, 21))
 def _elu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -144,7 +144,7 @@ def _elu(
     return [fx_graph.call_function(F.elu, args=(args[0],), kwargs={"alpha": alpha})]
 
 
-@register_op("LeakyRelu")
+@register_op("LeakyRelu", opset_range=(11, 21))
 def _leaky_relu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -171,7 +171,7 @@ def _leaky_relu(
     return [fx_graph.call_function(F.leaky_relu, args=(args[0],), kwargs={"negative_slope": alpha})]
 
 
-@register_op("Selu")
+@register_op("Selu", opset_range=(11, 21))
 def _selu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -197,7 +197,7 @@ def _selu(
     return [fx_graph.call_function(F.selu, args=(args[0],))]
 
 
-@register_op("Celu")
+@register_op("Celu", opset_range=(12, 21))
 def _celu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -223,7 +223,7 @@ def _celu(
     return [fx_graph.call_function(F.celu, args=(args[0],), kwargs={"alpha": alpha})]
 
 
-@register_op("PRelu")
+@register_op("PRelu", opset_range=(11, 21))
 def _prelu(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -257,7 +257,7 @@ def _prelu(
     return [fx_graph.call_function(F.prelu, args=(args[0], slope_node))]
 
 
-@register_op("HardSigmoid")
+@register_op("HardSigmoid", opset_range=(11, 21))
 def _hard_sigmoid(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -289,7 +289,7 @@ def _hard_sigmoid(
     return [fx_graph.call_function(torch.clamp, args=(add_node,), kwargs={"min": 0.0, "max": 1.0})]
 
 
-@register_op("HardSwish")
+@register_op("HardSwish", opset_range=(14, 21))
 def _hard_swish(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -312,7 +312,7 @@ def _hard_swish(
     return [fx_graph.call_function(F.hardswish, args=(args[0],))]
 
 
-@register_op("Mish")
+@register_op("Mish", opset_range=(18, 21))
 def _mish(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -335,7 +335,7 @@ def _mish(
     return [fx_graph.call_function(F.mish, args=(args[0],))]
 
 
-@register_op("Softplus")
+@register_op("Softplus", opset_range=(11, 21))
 def _softplus(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -358,7 +358,7 @@ def _softplus(
     return [fx_graph.call_function(F.softplus, args=(args[0],))]
 
 
-@register_op("Softsign")
+@register_op("Softsign", opset_range=(11, 21))
 def _softsign(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -386,7 +386,7 @@ def _softsign(
     return [fx_graph.call_function(torch.div, args=(args[0], denom))]
 
 
-@register_op("ThresholdedRelu")
+@register_op("ThresholdedRelu", opset_range=(10, 21))
 def _thresholded_relu(
     node: Node,
     args: list[torch.fx.Node | None],
