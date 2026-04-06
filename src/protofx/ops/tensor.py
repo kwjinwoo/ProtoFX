@@ -40,7 +40,7 @@ def _extract_static_int_data(node: Node, input_index: int) -> tuple[int, ...]:
 # ---------------------------------------------------------------------------
 
 
-@register_op("Reshape")
+@register_op("Reshape", opset_range=(11, 21))
 def _reshape(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -72,7 +72,7 @@ def _reshape(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Transpose")
+@register_op("Transpose", opset_range=(11, 21))
 def _transpose(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -106,7 +106,7 @@ def _transpose(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Flatten")
+@register_op("Flatten", opset_range=(11, 21))
 def _flatten(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -142,7 +142,7 @@ def _flatten(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Squeeze")
+@register_op("Squeeze", opset_range=(13, 21))
 def _squeeze(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -183,7 +183,7 @@ def _squeeze(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Unsqueeze")
+@register_op("Unsqueeze", opset_range=(13, 21))
 def _unsqueeze(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -220,7 +220,7 @@ def _unsqueeze(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Concat")
+@register_op("Concat", opset_range=(11, 21))
 def _concat(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -276,7 +276,7 @@ def _extract_optional_int_data(node: Node, input_index: int) -> tuple[int, ...] 
     return tuple(int(v) for v in value.data.flat)
 
 
-@register_op("Slice")
+@register_op("Slice", opset_range=(11, 21))
 def _slice(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -327,7 +327,7 @@ def _slice(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Identity")
+@register_op("Identity", opset_range=(11, 21))
 def _identity(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -353,7 +353,7 @@ def _identity(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Cast")
+@register_op("Cast", opset_range=(11, 21))
 def _cast(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -394,7 +394,7 @@ def _cast(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Expand")
+@register_op("Expand", opset_range=(11, 21))
 def _expand(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -425,7 +425,7 @@ def _expand(
 # ---------------------------------------------------------------------------
 
 
-@register_op("Gather")
+@register_op("Gather", opset_range=(11, 21))
 def _gather(
     node: Node,
     args: list[torch.fx.Node | None],
@@ -515,7 +515,7 @@ def _gather_nd_impl(data: torch.Tensor, indices: torch.Tensor, batch_dims: int =
     return gathered.reshape(out_shape)
 
 
-@register_op("GatherND")
+@register_op("GatherND", opset_range=(12, 21))
 def _gather_nd(
     node: Node,
     args: list[torch.fx.Node | None],
