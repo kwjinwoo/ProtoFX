@@ -94,10 +94,15 @@ Shared helper modules.
 
 ProtoFX treats validation as part of the architecture, not as an ad hoc scripting concern.
 
-- `tests/ops/` verifies handler behavior and emitted FX structure with small targeted fixtures.
-- `tests/parity/` verifies op-level ONNX Runtime parity using synthetic models built in code.
-- `tests/models/` is the reserved suite boundary for standard model-family validation such as ResNet, BERT,
-	and ViT.
+| Suite | Role |
+|-------|------|
+| `tests/importer/` | Verifies ONNX parsing, normalization, and importer boundary behavior. |
+| `tests/emitter/` | Verifies FX emission behavior, value-kind lowering, and end-to-end emission smoke coverage. |
+| `tests/ir/` | Verifies the graph-owned IR model, mutation APIs, and invariants. |
+| `tests/utils/` | Verifies shared boundary helpers such as dtype conversion utilities. |
+| `tests/ops/` | Verifies handler behavior and emitted FX structure with small targeted fixtures. |
+| `tests/parity/` | Verifies op-level ONNX Runtime parity using synthetic models built in code. |
+| `tests/models/` | Verifies manifest-driven reference-model parity for standard model families such as SqueezeNet, ResNet, BERT, and ViT. |
 
 Reference-model validation follows a different asset boundary than small parity tests.
 

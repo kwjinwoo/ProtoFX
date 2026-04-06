@@ -3,19 +3,20 @@
 > ONNX → PyTorch `torch.fx.GraphModule` Converter
 
 ProtoFX converts [ONNX](https://onnx.ai/) models into PyTorch [`torch.fx.GraphModule`](https://pytorch.org/docs/stable/fx.html) objects.
-Unlike simple weight-loading approaches, ProtoFX preserves the **full graph structure** so that downstream passes—`torch.compile`, quantization, pruning, and custom optimizations—work out of the box.
+Unlike simple weight-loading approaches, ProtoFX preserves the **full graph structure** so that downstream
+passes can consume the resulting `GraphModule` directly.
 
 ## Key Features
 
 - **Faithful graph translation** — ONNX ops map to composable `torch.fx` nodes, not opaque forward calls
 - **Extensible op registry** — add or override handlers with a single `@register_op` decorator
-- **Downstream-ready** — output `GraphModule` integrates seamlessly with `torch.compile`, FX passes, and ONNX-Runtime export round-trips
+- **Downstream-oriented** — output `GraphModule` is structurally compatible with `torch.compile`, FX passes, and quantization workflows (downstream integration is under active validation — see [Roadmap](docs/ROADMAP.md))
 
 ## Requirements
 
 - Python ≥ 3.12
-- PyTorch ≥ 2.0
-- ONNX
+- PyTorch ≥ 2.5
+- ONNX ≥ 1.16
 
 ## Installation
 
@@ -26,17 +27,28 @@ pip install -e ".[dev]"        # editable install for development
 
 ## Quick Start
 
+ProtoFX exposes a two-step pipeline — **import** then **emit**:
+
 ```python
 import onnx
-from protofx import to_fx
 
+from protofx.emitters import emit_graph
+from protofx.importers import import_model
+
+# 1. Import ONNX model into normalized IR
 onnx_model = onnx.load("model.onnx")
-graph_module = to_fx(onnx_model)
+ir_graph = import_model(onnx_model)
 
-# Now use it like any torch.fx.GraphModule
+# 2. Emit torch.fx.GraphModule from IR
+graph_module = emit_graph(ir_graph)
+
+# Use it like any torch.fx.GraphModule
 graph_module.graph.print_tabular()
-output = graph_module(input_tensor)
+(output,) = graph_module(input_tensor)
 ```
+
+> **Note:** The top-level `protofx` package does not currently export a convenience `to_fx()` wrapper.
+> Use `import_model()` and `emit_graph()` directly.
 
 ## Architecture
 
@@ -74,15 +86,21 @@ pytest tests/ -v
 ### Adding an Op Handler
 
 ```python
+import torch
+
 from protofx.ops import register_op
 
-@register_op("Relu")
-def relu_handler(ctx, node):
-    x = ctx.get_input(node, 0)
-    return ctx.call_function(torch.relu, args=(x,))
+
+@register_op("Relu", opset_range=(11, 21))
+def relu_handler(node, args, fx_graph, module):
+    return [fx_graph.call_function(torch.relu, args=(args[0],))]
 ```
 
-Each handler lives in `src/protofx/ops/` and is tested with a minimal ONNX fixture in `tests/ops/`.
+Each handler receives the IR `node`, a list of resolved FX `args`, the `fx_graph` under construction, and the
+root `module`. It returns a list of `torch.fx.Node` — one per IR output.
+
+Handlers live in `src/protofx/ops/` and are tested with minimal ONNX fixtures in `tests/ops/`.
+See [docs/src/ops.md](docs/src/ops.md) for the full registry API reference.
 
 ## Roadmap
 

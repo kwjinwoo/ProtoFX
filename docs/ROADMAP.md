@@ -54,13 +54,14 @@ End-to-end correctness verification against reference ONNX models.
 The accepted reference-model asset policy for this milestone is recorded in
 `docs/adr/0004-externalized-reference-model-validation-assets.md`.
 Detailed model-validation structure is documented in `docs/dev/MODEL_VALIDATION.md`.
+The generated opset compatibility matrix lives in `docs/dev/OPSET_COMPATIBILITY.md`.
 
 | Status | Item |
 |--------|------|
 | ✅ | Numerical parity tests vs. ONNX Runtime |
 | ✅ | Manifest-driven reference-model validation infrastructure (externalized assets, cache-backed materialization) |
 | ✅ | Support for standard model families (ResNet18, BERT, ViT-B/16) in the reference-model suite |
-| 📋 | Opset version compatibility matrix |
+| ✅ | Opset version compatibility matrix generated from the live op registry |
 
 ---
 

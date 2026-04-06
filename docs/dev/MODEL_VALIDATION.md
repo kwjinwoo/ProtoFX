@@ -1,6 +1,7 @@
 # Model Validation
 
-This document defines the structure, asset boundary, and cache policy for ProtoFX reference-model validation.
+This document defines the structure, asset boundary, manifest schema, execution requirements, and cache
+behavior for ProtoFX reference-model validation.
 
 The architectural decision behind this policy is recorded in
 `docs/adr/0004-externalized-reference-model-validation-assets.md`.
@@ -27,28 +28,39 @@ These two validation layers serve different purposes and should not be collapsed
 ## Repository Boundary
 
 - Large reference ONNX binaries are not the normal git-tracked artifact for model-family validation.
-- The repository should keep only human-reviewable declarations such as manifests, tolerances, and family
-  coverage metadata.
+- The repository keeps only human-reviewable declarations such as manifests, tolerances, and family coverage
+  metadata.
 - Small vendored ONNX fixtures remain acceptable only as narrow exceptions for bug regressions when
   code-generated or reproducibly exported alternatives are impractical.
 
 This keeps source control focused on reviewable intent instead of generated binary payloads.
 
-## Recommended Suite Structure
+## Current Suite Structure
 
-The recommended layout for Milestone 3 model-family validation is:
+The current `tests/models/` layout is:
 
 ```text
-tests/
-├── parity/                # Synthetic, code-generated ONNX parity tests
-└── models/                # Reference-model family validation
-    ├── conftest.py        # Shared materialization, cache, and comparison fixtures
-    ├── manifests/         # Human-reviewable model declarations
-    │   ├── vision/
-    │   └── nlp/
-    ├── test_vision.py     # ResNet, ViT, and related vision families
-    └── test_nlp.py        # BERT and related language families
+tests/models/
+├── _cache.py
+├── _manifest.py
+├── conftest.py
+├── manifests/
+│   ├── nlp/
+│   │   └── bert.yaml
+│   ├── smoke/
+│   │   └── smoke.yaml
+│   └── vision/
+│       ├── resnet18.yaml
+│       └── vit_b_16.yaml
+├── test_nlp.py
+├── test_smoke.py
+└── test_vision.py
 ```
+
+- `_manifest.py` parses YAML into `ModelManifest` and enforces required fields and types.
+- `_cache.py` materializes cache-backed ONNX exports from validated manifests.
+- `conftest.py` provides the smoke fixtures and the shared `assert_model_parity()` helper.
+- `test_smoke.py`, `test_vision.py`, and `test_nlp.py` are all gated with `@pytest.mark.model_validation`.
 
 This separation is intentional.
 
@@ -59,46 +71,122 @@ This separation is intentional.
 
 ## Manifest Contract
 
-Each reference-model declaration should capture enough information to materialize and validate a model
-deterministically.
+`load_manifest()` accepts only YAML mappings and validates the following schema.
 
-At minimum, a manifest should declare:
+| Field | Required | Type | Meaning |
+|-------|----------|------|---------|
+| `family` | Yes | `str` | Model family selector. The current builders support `torchvision` and `transformers`. |
+| `model_name` | Yes | `str` | Model constructor or identifier within the selected family. |
+| `opset` | Yes | `int` | ONNX opset passed to `torch.onnx.export()`. |
+| `pretrained` | Yes | `bool` | Whether to load pretrained weights instead of seeded random initialization. |
+| `seed` | Yes | `int` | Random seed for deterministic model initialization and parity input generation. |
+| `input_shapes` | Yes | `dict[str, list[int]]` | Input names and concrete shapes used for export and runtime parity inputs. |
+| `input_dtypes` | No | `dict[str, str]` | Optional per-input dtype map. Missing entries default to `float32`. |
+| `tolerances` | Yes | `dict[str, float]` | Numerical comparison tolerances. Must contain `rtol` and `atol`. |
+| `required_extras` | Yes | `list[str]` | Names of `pyproject.toml` optional-dependency groups required to materialize the model. |
+| `export_kwargs` | No | `dict[str, Any]` | Extra keyword arguments for `torch.onnx.export()`. For transformer manifests, `config_class` and `model_class` are reserved builder hints and are removed before export. |
 
-- a stable model identifier and family classification
-- a canonical source location or reproducible export recipe
-- an immutable revision, version, or content digest
-- the expected opset and any export-time knobs that affect graph shape
-- input signature metadata and representative input-generation rules
-- output selection rules and numerical tolerances
-- any required optional dependencies for materialization or execution
+Invalid manifests fail fast.
 
-The manifest format itself should stay text-based and reviewable.
+- Missing files raise `FileNotFoundError`.
+- Missing required fields or malformed values raise `ValueError`.
+
+Example:
+
+```yaml
+family: transformers
+model_name: Bert
+opset: 17
+pretrained: false
+seed: 42
+input_shapes:
+  input_ids: [1, 128]
+  attention_mask: [1, 128]
+  token_type_ids: [1, 128]
+input_dtypes:
+  input_ids: int64
+  attention_mask: int64
+  token_type_ids: int64
+tolerances:
+  rtol: 1.0e-4
+  atol: 1.0e-4
+required_extras:
+  - models
+export_kwargs:
+  config_class: BertConfig
+  model_class: BertModel
+```
+
+## Execution Prerequisites
+
+The current reference-model suite depends on both development tooling and model-export extras.
+
+```bash
+pip install -e ".[dev,models]"
+```
+
+- The `dev` extra provides `pytest` and `onnxruntime`, which are required to execute the parity assertions.
+- The `models` extra provides `pyyaml`, `torchvision`, `transformers`, and `onnxscript`, which are required to
+  parse manifests and materialize the current reference models.
+- Current manifests declare `required_extras: [models]`, but test execution also assumes the `dev` toolchain.
+
+All current model-family tests use the `model_validation` marker declared in `pyproject.toml`.
+
+```bash
+pytest tests/models/ -m model_validation -v
+pytest tests/models/test_smoke.py -m model_validation -v
+pytest tests/ -m "not model_validation" -v
+```
+
+When optional model-family dependencies are unavailable, the tests skip by catching `ImportError` during
+materialization rather than failing with an import-time crash.
 
 ## Materialization and Cache Policy
 
-Reference-model assets should be materialized into a cache outside the git worktree.
+`materialize(manifest, cache_root=None)` stores exported ONNX files in a cache directory and reuses them on
+subsequent calls.
 
-- Cache entries should be keyed by the declared model identity plus any source digest, revision, opset, and
-  export settings that change the produced ONNX graph.
-- Cached artifacts should be treated as disposable build products, not repository content.
-- Cache population may happen through download, export, or conversion helpers, but the manifest remains the
-  source of truth.
-- The cache root must be configurable so local development and CI can point at different storage locations.
-- Digest or revision mismatches must invalidate stale cache entries rather than silently reusing them.
+- The default cache root is `~/.cache/protofx/models`.
+- Callers can override the root with the `cache_root` argument. The current tests pass `tmp_path` so each run
+  uses an isolated temporary cache.
 
-## Execution Policy
+The current relative cache path is:
 
-Reference-model validation should be treated as an opt-in or separately gated suite rather than folded into
-the same execution profile as small fast tests.
+```text
+<family>/<model_name>/opset<opset>/pretrained=<pretrained>_<export_kwargs_hash>.onnx
+```
 
-- Local development workflows may skip model-family tests when optional dependencies or materialized assets are
-  unavailable.
-- A dedicated CI job should materialize the declared assets and fail if required artifacts cannot be obtained
-  or validated.
-- Blocking CI may use a smaller smoke subset of manifests, while scheduled or manually triggered jobs may run a
-  broader family matrix.
+`export_kwargs_hash` is the first 8 hex characters of:
 
-This preserves fast feedback for routine development without weakening the long-running validation contract.
+```text
+sha256(json.dumps(export_kwargs, sort_keys=True, default=str))
+```
+
+Current cache identity behavior is therefore narrower than the full manifest schema.
+
+| Manifest field(s) | Affect cache path? | Current behavior |
+|-------------------|--------------------|------------------|
+| `family`, `model_name`, `opset`, `pretrained`, `export_kwargs` | Yes | Changing any of these produces a different cache path. |
+| `seed`, `input_shapes`, `input_dtypes`, `tolerances`, `required_extras` | No | Changing any of these does not invalidate an existing cache entry automatically. |
+
+This is the concrete implementation contract contributors must account for today. If a non-keyed field changes
+the exported artifact or parity expectations, use a fresh cache root or remove the stale cached file manually.
+
+For transformer manifests, `config_class` and `model_class` live inside `export_kwargs`, so changing either
+also changes cache identity.
+
+## Local vs CI Execution
+
+Reference-model validation remains a heavier suite than routine fast tests, and the current structure reflects
+that distinction.
+
+- The fastest local end-to-end check is `tests/models/test_smoke.py`, which exercises the full
+  manifest-materialization, import, emit, and ORT parity path on a small `torchvision` model.
+- Broader local investigation can run `tests/models/test_vision.py` or `tests/models/test_nlp.py` directly.
+- Dedicated CI is expected to materialize assets and run the full marked suite rather than only the smoke test.
+
+The `model_validation` marker is the primary switch separating these heavier checks from the default fast
+feedback path.
 
 ## Relationship to Scripts
 

@@ -17,11 +17,11 @@ The top-level `protofx` package does not currently provide a convenience wrapper
 
 | Module | Description |
 |--------|-------------|
-| `protofx` | Top-level package namespace and package metadata |
-| `protofx.ops` | ONNX op handler registry and `@register_op` decorator |
-| `protofx.ir` | Internal IR types (Graph, Node, Value, TensorType) |
-| `protofx.importers` | ONNX ModelProto → IR conversion |
-| `protofx.emitters` | IR → torch.fx.GraphModule conversion |
+| `protofx` | Top-level package namespace and package metadata. No convenience `to_fx()` wrapper is currently exported. |
+| [`protofx.ops`](ops.md) | ONNX op handler registry, dispatch helpers, and `@register_op` decorator |
+| [`protofx.ir`](ir.md) | Public IR surface (`Graph`, `Node`, `Value`, `TensorType`, and related types) |
+| [`protofx.importers`](importers.md) | ONNX ModelProto → IR conversion |
+| [`protofx.emitters`](emitters.md) | IR → torch.fx.GraphModule conversion |
 | `protofx.utils` | Shared utilities (shape inference, type mapping) |
 
 ## IR Notes
