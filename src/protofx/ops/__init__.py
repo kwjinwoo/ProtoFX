@@ -9,6 +9,6 @@ import protofx.ops.normalization as normalization  # noqa: F401
 import protofx.ops.pooling as pooling  # noqa: F401
 import protofx.ops.reduction as reduction  # noqa: F401
 import protofx.ops.tensor as tensor  # noqa: F401
-from protofx.ops._registry import dispatch_op, register_op
+from protofx.ops._registry import dispatch_op, list_registry, register_op
 
-__all__ = ["dispatch_op", "register_op"]
+__all__ = ["dispatch_op", "list_registry", "register_op"]
