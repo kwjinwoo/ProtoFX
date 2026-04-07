@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import onnx
+import pytest
 
 from tests.models._manifest import load_manifest
 
@@ -15,6 +16,10 @@ _MANIFESTS_DIR = Path(__file__).resolve().parent / "manifests"
 
 class TestMaterialize:
     """Verify that materialize() exports an ONNX model and caches it."""
+
+    @pytest.fixture(autouse=True)
+    def _require_torchvision(self) -> None:
+        pytest.importorskip("torchvision")
 
     def test_materialize_returns_existing_onnx_path(self, tmp_path: Path) -> None:
         """materialize() must return a Path to an existing .onnx file."""
@@ -55,6 +60,10 @@ class TestCacheKeyIsolation:
 
 class TestReproducibleExport:
     """Verify that export from the same manifest produces numerically identical results."""
+
+    @pytest.fixture(autouse=True)
+    def _require_torchvision(self) -> None:
+        pytest.importorskip("torchvision")
 
     def test_two_cold_exports_produce_same_ort_outputs(self, tmp_path: Path) -> None:
         """Two independent exports of the same manifest must yield identical ORT outputs."""
