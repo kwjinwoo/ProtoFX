@@ -103,6 +103,7 @@ ProtoFX treats validation as part of the architecture, not as an ad hoc scriptin
 | `tests/ops/` | Verifies handler behavior and emitted FX structure with small targeted fixtures. |
 | `tests/parity/` | Verifies op-level ONNX Runtime parity using synthetic models built in code. |
 | `tests/models/` | Verifies manifest-driven reference-model parity for standard model families such as SqueezeNet, ResNet, BERT, and ViT. |
+| `tests/downstream/` | Verifies compatibility of emitted `GraphModule` objects with downstream PyTorch tooling such as `torch.compile`, `torch.export`, FX quantization, and custom FX passes. |
 
 Reference-model validation follows a different asset boundary than small parity tests.
 
@@ -111,7 +112,16 @@ Reference-model validation follows a different asset boundary than small parity 
 - Helper tooling may later exist under `scripts/` or another utility location, but pytest suites and their
 	manifests remain the authoritative validation surface.
 
-See `docs/dev/MODEL_VALIDATION.md` for the detailed validation-suite structure and asset policy.
+Downstream PyTorch-tooling validation follows a separate suite boundary from both ORT parity and
+reference-model validation.
+
+- Claims about `torch.compile`, `torch.export`, FX quantization, or custom FX-pass compatibility belong
+	under `tests/downstream/`.
+- Helper tooling may exist under `scripts/` or another utility location, but pytest suites remain the
+	authoritative validation surface there as well.
+
+See `docs/dev/MODEL_VALIDATION.md` for the detailed reference-model validation structure and asset policy.
+See `docs/dev/DOWNSTREAM_VALIDATION.md` for the detailed downstream-tooling validation contract.
 
 ## Architectural Boundary
 
@@ -148,7 +158,9 @@ The current architecture documentation is intentionally distributed:
 - `docs/adr/0002-documentation-system.md` — accepted documentation and decision-recording model.
 - `docs/adr/0003-milestone-1-ir-contract-reconciliation.md` — accepted Milestone 1 contract alignment.
 - `docs/adr/0004-externalized-reference-model-validation-assets.md` — accepted reference-model asset policy.
+- `docs/adr/0005-downstream-tooling-validation-boundary.md` — accepted downstream-tooling validation policy.
 - `docs/dev/IR.md` — IR documentation hub.
+- `docs/dev/DOWNSTREAM_VALIDATION.md` — downstream-tooling validation suite structure and support contract.
 - `docs/dev/MODEL_VALIDATION.md` — reference-model validation suite structure and asset rules.
 - `docs/dev/ir/invariants.md` — IR invariants and validation-facing rules.
 - `docs/dev/ir/type-system.md` — tensor metadata and value classification model.

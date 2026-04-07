@@ -69,6 +69,10 @@ The generated opset compatibility matrix lives in `docs/dev/OPSET_COMPATIBILITY.
 
 Verify that the output `GraphModule` works correctly with PyTorch tooling.
 
+The accepted downstream validation boundary for this milestone is recorded in
+`docs/adr/0005-downstream-tooling-validation-boundary.md`.
+Detailed downstream validation structure is documented in `docs/dev/DOWNSTREAM_VALIDATION.md`.
+
 | Status | Item |
 |--------|------|
 | 📋 | `torch.compile` compatibility |

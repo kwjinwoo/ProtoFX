@@ -48,3 +48,4 @@ Start new ADRs from `docs/adr/TEMPLATE.md`.
 | 0002 | ADR-centered documentation system | Accepted |
 | 0003 | Milestone 1 IR contract reconciliation | Accepted |
 | 0004 | Externalized reference-model validation assets | Accepted |
+| 0005 | Downstream tooling validation boundary | Accepted |

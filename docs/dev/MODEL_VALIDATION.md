@@ -25,6 +25,13 @@ These two validation layers serve different purposes and should not be collapsed
 | `tests/parity/` | Synthetic ONNX vs. ONNX Runtime numerical parity | Code-generated ONNX models | Small |
 | `tests/models/` | Standard model-family validation | Manifest-declared, cache-backed reference assets | Large |
 
+Downstream PyTorch-tooling compatibility is intentionally outside this document's scope.
+
+- Checks for `torch.compile`, `torch.export`, FX quantization, and custom FX passes belong to
+  `tests/downstream/` and `docs/dev/DOWNSTREAM_VALIDATION.md`.
+- `tests/models/` remains focused on ONNX Runtime parity and manifest-backed end-to-end numerical
+  validation, even when the same reference models are reused elsewhere.
+
 ## Repository Boundary
 
 - Large reference ONNX binaries are not the normal git-tracked artifact for model-family validation.
@@ -67,6 +74,8 @@ This separation is intentional.
 - `tests/parity/` stays optimized for small code-generated models and fast operator-focused feedback.
 - `tests/models/` carries heavier end-to-end validation concerns, optional dependencies, asset caching, and
   broader family-level coverage.
+- Downstream PyTorch-tooling compatibility claims remain outside this suite boundary even when they reuse
+  the same manifests or exported artifacts.
 - Helper scripts may assist materialization, but they do not replace the suite boundary above.
 
 ## Manifest Contract
