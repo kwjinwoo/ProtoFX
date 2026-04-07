@@ -1,10 +1,14 @@
 ---
 name: grill-me
-description: Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
+description: Rapidly resolve a design by having the AI map out the decision tree and propose solutions.
 ---
 
-Interview me relentlessly about every aspect of this plan or question until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+Critique and stress-test every aspect of my plan. Instead of asking me questions one by one, proactively map out the critical branches of the decision tree.
 
-Ask the questions one at a time.
+For each major architectural decision or potential bottleneck:
+1. Identify the core problem or dependency.
+2. State your highly recommended solution based on best practices.
+3. Briefly list the trade-offs of your recommendation.
 
-If a question can be answered by exploring the codebase, explore the codebase instead.
+Present this as a comprehensive list. I will review your proposed decision tree and reply with approvals, rejections, or corrections. We will iterate on the entire tree together until shared understanding is reached.
+If assumptions can be resolved by exploring the codebase, explore the codebase first.
