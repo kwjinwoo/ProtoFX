@@ -58,14 +58,39 @@ The following are not part of the initial guarantee unless explicitly added late
 
 This narrow contract keeps Milestone 4 completion criteria concrete and reproducible.
 
+### FX-Based Quantization
+
+The initial official support contract for FX quantization (`torch.ao.quantization`) uses the same narrow
+environment as `torch.compile`.
+
+- Ubuntu CI CPU environment
+- project-supported Python and Torch versions
+- `prepare_fx` / `convert_fx` with a default static `QConfigMapping`
+- quantization backend `"x86"` on Linux, `"qnnpack"` on macOS/ARM
+
+The following are not part of the initial guarantee:
+
+- dynamic quantization or quantization-aware training (QAT)
+- non-default `QConfigMapping` or per-layer overrides
+- exhaustive coverage across every supported model or operator combination
+
 ## Initial Coverage
 
-The initial `torch.compile` representative scope is expected to cover both small and model-level cases.
+### `torch.compile`
+
+The initial `torch.compile` representative scope covers both small and model-level cases.
 
 - fast compile smoke coverage on representative emitted graphs under `tests/downstream/`
 - manifest-backed end-to-end compile validation for selected models such as SqueezeNet, ResNet18, and BERT
 
-This is a representative gate, not an exhaustive matrix.
+### FX-Based Quantization
+
+The initial FX quantization representative scope covers both small and model-level cases.
+
+- fast quantization smoke coverage on representative emitted graphs (Conv, MatMul, Add+Relu)
+- manifest-backed end-to-end quantization survival for SqueezeNet
+
+Both scopes are representative gates, not exhaustive matrices.
 
 - In-scope representative cases must all pass before the roadmap item can be marked complete.
 - Failures outside the agreed initial scope should be tracked separately rather than silently expanding the
@@ -73,11 +98,27 @@ This is a representative gate, not an exhaustive matrix.
 
 ## Pass/Fail Contract
 
+### `torch.compile`
+
 For an in-scope `torch.compile` validation case to pass:
 
 1. `emit_graph()` must produce an eager `GraphModule` that runs successfully.
 2. `torch.compile(graph_module)` must execute without backend exceptions in the supported environment.
 3. Compiled outputs must be numerically close to eager outputs for the same emitted `GraphModule`.
+
+### FX-Based Quantization
+
+For an in-scope FX quantization validation case to pass:
+
+1. `emit_graph()` must produce an eager `GraphModule` that runs successfully.
+2. `prepare_fx(graph_module, qconfig_mapping, example_inputs)` must complete without exceptions.
+3. A calibration forward pass on the prepared model must complete without exceptions.
+4. `convert_fx(prepared)` must complete without exceptions.
+5. A forward pass on the converted (quantized) model must complete without exceptions.
+6. Output shapes of the quantized model must match the eager model's output shapes.
+
+Numerical closeness between eager and quantized outputs is **not** part of the pass/fail contract because
+post-training quantization intentionally reduces precision.
 
 Milestone completion does not allow known failures inside the agreed representative scope.
 
@@ -89,11 +130,13 @@ The detailed file list may evolve, but the intended suite boundary looks like th
 tests/downstream/
 ├── conftest.py
 ├── test_compile_smoke.py
-└── test_compile_models.py
+├── test_compile_models.py
+├── test_quantization_smoke.py
+└── test_quantization_models.py
 ```
 
-Future Milestone 4 work may extend the same suite with files dedicated to `torch.export`, quantization, or
-custom FX-pass checks.
+Future Milestone 4 work may extend the same suite with files dedicated to `torch.export` or custom FX-pass
+checks.
 
 ## Execution Model
 
