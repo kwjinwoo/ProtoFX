@@ -58,7 +58,7 @@ def _emit_data_value(
     attr_name = base if count == 0 else f"{base}_{count}"
     attr_counter[base] = count + 1
 
-    tensor = torch.from_numpy(value.data)
+    tensor = torch.from_numpy(value.data.copy())
     root.register_buffer(attr_name, tensor)
     fx_node = fx_graph.get_attr(attr_name)
     value_map[value.id] = fx_node
