@@ -158,10 +158,16 @@ def _export_onnx(model: torch.nn.Module, manifest: ModelManifest, dest: Path) ->
     _BUILDER_KEYS = {"config_class", "model_class"}
     onnx_kwargs = {k: v for k, v in manifest.export_kwargs.items() if k not in _BUILDER_KEYS}
 
+    if "dynamic_axes" in onnx_kwargs:
+        msg = "dynamic_axes is not supported on the dynamo export path; use dynamic_shapes instead"
+        raise NotImplementedError(msg)
+
+    exported = torch.export.export(model, args, strict=False)
     torch.onnx.export(
-        model,
-        args,
+        exported,
+        (),
         str(dest),
+        dynamo=True,
         opset_version=manifest.opset,
         input_names=input_names,
         **onnx_kwargs,
