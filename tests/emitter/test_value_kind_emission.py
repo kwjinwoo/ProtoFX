@@ -168,3 +168,65 @@ class TestOutputEmission:
         # output node args[0] should be a tuple of proxy references
         assert isinstance(output_node.args[0], tuple)
         assert len(output_node.args[0]) == 2
+
+
+class TestWritableBuffers:
+    """Emitted buffers must be writable even when backed by read-only NumPy arrays."""
+
+    def test_initializer_buffer_is_writable(self) -> None:
+        """Buffer from a read-only NumPy initializer must be writable without warnings."""
+        import warnings
+
+        g = Graph(name="test")
+        data = np.ones((2, 3), dtype=np.float32)
+        data.flags.writeable = False
+        init = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)),
+            data=data,
+            name="weight",
+        )
+        g.set_graph_outputs([init])
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            gm = emit_graph(g)
+
+        buf = next(iter(gm.named_buffers()))[1]
+        buf.zero_()
+
+    def test_constant_buffer_is_writable(self) -> None:
+        """Buffer from a read-only NumPy constant must own its data, not alias the source."""
+        g = Graph(name="test")
+        data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        data.flags.writeable = False
+        const = g.add_constant(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3,)),
+            data=data,
+            name="const_val",
+        )
+        g.set_graph_outputs([const])
+
+        gm = emit_graph(g)
+        buf = next(iter(gm.named_buffers()))[1]
+
+        # Buffer must not alias the original read-only NumPy array
+        assert buf.data_ptr() != data.ctypes.data
+        buf.fill_(0.0)
+
+    def test_initializer_buffer_does_not_share_numpy_memory(self) -> None:
+        """Emitted buffer must own its data, not alias the original NumPy array."""
+        g = Graph(name="test")
+        data = np.array([10.0, 20.0], dtype=np.float32)
+        init = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)),
+            data=data,
+            name="w",
+        )
+        g.set_graph_outputs([init])
+
+        gm = emit_graph(g)
+        buf = next(iter(gm.named_buffers()))[1]
+
+        # Mutating the buffer must not affect the original NumPy array
+        buf.zero_()
+        assert data[0] == 10.0
