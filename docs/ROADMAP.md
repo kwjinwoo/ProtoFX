@@ -75,7 +75,7 @@ Detailed downstream validation structure is documented in `docs/dev/DOWNSTREAM_V
 
 | Status | Item |
 |--------|------|
-| 📋 | `torch.compile` compatibility |
+| ✅ | `torch.compile` compatibility |
 | 📋 | FX-based quantization (`torch.ao.quantization`) |
 | 📋 | Custom FX pass compatibility |
 | 📋 | `torch.export` round-trip |
