@@ -54,6 +54,7 @@ known-first-party = ["protofx"]
 [tool.pytest.ini_options]
 markers = [
     "model_validation: marks tests requiring reference-model assets (deselect with '-m \"not model_validation\"')",
+    "downstream_validation: marks downstream PyTorch tooling compatibility tests (deselect with '-m \"not downstream_validation\"')",
 ]
 
 [dependency-groups]
