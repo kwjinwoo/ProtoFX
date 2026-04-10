@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -80,4 +81,83 @@ def assert_compile_parity(
             rtol=rtol,
             atol=atol,
             msg=f"Output {i}: compiled vs eager mismatch",
+        )
+
+
+def _default_qconfig_backend() -> str:
+    """Return the default quantization backend for the current platform.
+
+    Returns:
+        ``"qnnpack"`` on macOS/ARM, ``"x86"`` otherwise.
+    """
+    if platform.system() == "Darwin" or platform.machine() in ("arm64", "aarch64"):
+        return "qnnpack"
+    return "x86"
+
+
+def assert_quantize_survives(
+    model: ModelProto,
+    inputs: dict[str, np.ndarray],
+    *,
+    qconfig_backend: str | None = None,
+) -> None:
+    """Assert that a ProtoFX-emitted graph survives the FX post-training quantization pipeline.
+
+    Steps:
+    1. Emit an eager ``GraphModule`` from the ONNX model.
+    2. Run ``prepare_fx`` with a default static qconfig mapping.
+    3. Calibrate the prepared model with the supplied inputs.
+    4. Run ``convert_fx`` to produce a quantized model.
+    5. Execute the quantized model and verify output shapes match the eager model.
+
+    Args:
+        model: A validated ``onnx.ModelProto``.
+        inputs: Mapping from input name to numpy array.
+        qconfig_backend: Quantization backend string (e.g. ``"x86"``, ``"qnnpack"``).
+            Defaults to a platform-appropriate backend.
+
+    Raises:
+        AssertionError: If any step in the quantization pipeline fails or output shapes diverge.
+    """
+    from torch.ao.quantization import get_default_qconfig_mapping
+    from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx
+
+    backend = qconfig_backend or _default_qconfig_backend()
+    torch.backends.quantized.engine = backend
+
+    gm = build_eager_gm(model)
+
+    input_names = [
+        inp.name for inp in model.graph.input if inp.name not in {init.name for init in model.graph.initializer}
+    ]
+    torch_inputs = [torch.from_numpy(inputs[name]) for name in input_names]
+
+    # Eager forward — capture reference output shapes
+    eager_outputs = gm(*torch_inputs)
+    if isinstance(eager_outputs, torch.Tensor):
+        eager_outputs = (eager_outputs,)
+    expected_shapes = [out.shape for out in eager_outputs]
+
+    # Prepare
+    qconfig_mapping = get_default_qconfig_mapping(backend)
+    prepared = prepare_fx(gm, qconfig_mapping, example_inputs=torch_inputs)
+
+    # Calibrate
+    prepared(*torch_inputs)
+
+    # Convert
+    quantized = convert_fx(prepared)
+
+    # Execute quantized model
+    quant_outputs = quantized(*torch_inputs)
+    if isinstance(quant_outputs, torch.Tensor):
+        quant_outputs = (quant_outputs,)
+
+    assert len(quant_outputs) == len(expected_shapes), (
+        f"Output count mismatch: quantized={len(quant_outputs)}, expected={len(expected_shapes)}"
+    )
+
+    for i, (quant_out, exp_shape) in enumerate(zip(quant_outputs, expected_shapes, strict=True)):
+        assert quant_out.shape == exp_shape, (
+            f"Output {i}: shape mismatch: quantized={quant_out.shape}, expected={exp_shape}"
         )
