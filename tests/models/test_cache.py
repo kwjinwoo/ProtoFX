@@ -58,6 +58,24 @@ class TestCacheKeyIsolation:
         assert _cache_key(base) != _cache_key(variant)
 
 
+class TestDynamicAxesGuard:
+    """Verify that dynamic_axes in export_kwargs is rejected on the dynamo export path."""
+
+    @pytest.fixture(autouse=True)
+    def _require_torchvision(self) -> None:
+        pytest.importorskip("torchvision")
+
+    def test_dynamic_axes_raises_not_implemented(self, tmp_path: Path) -> None:
+        """materialize() must reject manifests with dynamic_axes in export_kwargs."""
+        from tests.models._cache import materialize
+
+        base = load_manifest(_MANIFESTS_DIR / "smoke" / "smoke.yaml")
+        manifest = replace(base, export_kwargs={"dynamic_axes": {"input": {0: "batch"}}})
+
+        with pytest.raises(NotImplementedError, match="dynamic_axes"):
+            materialize(manifest, cache_root=tmp_path)
+
+
 class TestReproducibleExport:
     """Verify that export from the same manifest produces numerically identical results."""
 
