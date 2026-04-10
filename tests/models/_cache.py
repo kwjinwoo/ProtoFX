@@ -133,10 +133,22 @@ def _build_model(manifest: ModelManifest) -> torch.nn.Module:
 def _export_onnx(model: torch.nn.Module, manifest: ModelManifest, dest: Path) -> None:
     """Export a PyTorch model to ONNX and write it to *dest*.
 
+    Uses the dynamo export path (``torch.onnx.export(dynamo=True)``) with
+    ``torch.export.export(strict=False)`` to avoid deprecated TorchScript
+    tracing internals (``LeafSpec``, ``torch.jit.script_method``).
+
+    ``dynamic_axes`` is **not** supported on this path; use ``dynamic_shapes``
+    in the manifest ``export_kwargs`` instead.  Existing caches produced by
+    the legacy TorchScript path should be deleted manually
+    (``rm -rf ~/.cache/protofx/models``).
+
     Args:
         model: The PyTorch module to export.
         manifest: Manifest supplying opset and input shape information.
         dest: Target file path for the exported ``.onnx`` model.
+
+    Raises:
+        NotImplementedError: If *export_kwargs* contains ``dynamic_axes``.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
 
