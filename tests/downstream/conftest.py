@@ -161,3 +161,27 @@ def assert_quantize_survives(
         assert quant_out.shape == exp_shape, (
             f"Output {i}: shape mismatch: quantized={quant_out.shape}, expected={exp_shape}"
         )
+
+
+def assert_quantize_survives_pt2e(
+    model: ModelProto,
+    inputs: dict[str, np.ndarray],
+) -> None:
+    """Assert that a ProtoFX-emitted graph survives the PT2E quantization pipeline.
+
+    Steps:
+    1. Emit an eager ``GraphModule`` from the ONNX model.
+    2. Export via ``torch.export.export``.
+    3. Apply ``prepare_pt2e`` with an ``XNNPACKQuantizer``.
+    4. Calibrate the prepared model with the supplied inputs.
+    5. Apply ``convert_pt2e`` to produce a quantized model.
+    6. Execute the quantized model and verify output shapes match the eager model.
+
+    Args:
+        model: A validated ``onnx.ModelProto``.
+        inputs: Mapping from input name to numpy array.
+
+    Raises:
+        AssertionError: If any step in the PT2E quantization pipeline fails or output shapes diverge.
+    """
+    raise NotImplementedError("PT2E quantization helper not yet implemented")
