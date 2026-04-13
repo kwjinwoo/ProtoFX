@@ -1,9 +1,9 @@
-"""FX-based quantization validation for manifest-backed reference models.
+"""PT2E quantization validation for manifest-backed reference models.
 
 Verifies that emitted ``GraphModule`` objects for representative reference
-models survive the FX post-training quantization pipeline
-(``prepare_fx`` -> calibration -> ``convert_fx`` -> execute) without
-exceptions and produce outputs with the expected shape.
+models survive the torchao PT2E quantization pipeline
+(``torch.export`` -> ``prepare_pt2e`` -> calibration -> ``convert_pt2e`` -> execute)
+without exceptions and produce outputs with the expected shape.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import torch
 
 from protofx.emitters import emit_graph
 from protofx.importers import import_model
-from tests.downstream.conftest import _default_qconfig_backend
 from tests.models._cache import materialize
 from tests.models._manifest import ModelManifest, load_manifest
 
@@ -25,7 +24,7 @@ _MANIFESTS_DIR = Path(__file__).resolve().parents[1] / "models" / "manifests"
 
 
 def _assert_quantize_model_survives(onnx_path: Path, manifest: ModelManifest) -> None:
-    """Assert that a materialized reference model survives the FX quantization pipeline.
+    """Assert that a materialized reference model survives the PT2E quantization pipeline.
 
     Args:
         onnx_path: Path to the exported ``.onnx`` file.
@@ -34,11 +33,57 @@ def _assert_quantize_model_survives(onnx_path: Path, manifest: ModelManifest) ->
     Raises:
         AssertionError: If the quantization pipeline fails or output shapes diverge.
     """
-    from torch.ao.quantization import get_default_qconfig_mapping
-    from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx
+    from torchao.quantization.pt2e.observer import MinMaxObserver
+    from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
+    from torchao.quantization.pt2e.quantizer import (
+        QuantizationAnnotation,
+        QuantizationConfig,
+        QuantizationSpec,
+        Quantizer,
+        get_input_act_qspec,
+        get_output_act_qspec,
+    )
 
-    backend = _default_qconfig_backend()
-    torch.backends.quantized.engine = backend
+    act_spec = QuantizationSpec(
+        dtype=torch.int8,
+        quant_min=-128,
+        quant_max=127,
+        qscheme=torch.per_tensor_affine,
+        is_dynamic=False,
+        observer_or_fake_quant_ctr=MinMaxObserver.with_args(eps=2**-12),
+    )
+    weight_spec = QuantizationSpec(
+        dtype=torch.int8,
+        quant_min=-128,
+        quant_max=127,
+        qscheme=torch.per_tensor_symmetric,
+        is_dynamic=False,
+        observer_or_fake_quant_ctr=MinMaxObserver.with_args(eps=2**-12),
+    )
+    qconfig = QuantizationConfig(
+        input_activation=act_spec,
+        output_activation=act_spec,
+        weight=weight_spec,
+        bias=None,
+    )
+
+    class _SimpleStaticQuantizer(Quantizer):
+        """Minimal quantizer that annotates all call_function nodes with symmetric int8."""
+
+        def annotate(self, gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
+            for node in gm.graph.nodes:
+                if node.op == "call_function":
+                    input_qspec_map = {
+                        arg: get_input_act_qspec(qconfig) for arg in node.args if isinstance(arg, torch.fx.Node)
+                    }
+                    node.meta["quantization_annotation"] = QuantizationAnnotation(
+                        input_qspec_map=input_qspec_map,
+                        output_qspec=get_output_act_qspec(qconfig),
+                    )
+            return gm
+
+        def validate(self, gm: torch.fx.GraphModule) -> None:
+            pass
 
     model = onnx.load(str(onnx_path))
     ir_graph = import_model(model)
@@ -65,15 +110,19 @@ def _assert_quantize_model_survives(onnx_path: Path, manifest: ModelManifest) ->
         eager_outputs = (eager_outputs,)
     expected_shapes = [out.shape for out in eager_outputs]
 
-    # Prepare
-    qconfig_mapping = get_default_qconfig_mapping(backend)
-    prepared = prepare_fx(gm, qconfig_mapping, example_inputs=torch_inputs)
+    # Export and extract GraphModule
+    exported = torch.export.export(gm, tuple(torch_inputs))
+    exported_gm = exported.module()
+
+    # Prepare with SimpleStaticQuantizer
+    quantizer = _SimpleStaticQuantizer()
+    prepared = prepare_pt2e(exported_gm, quantizer)
 
     # Calibrate
     prepared(*torch_inputs)
 
     # Convert
-    quantized = convert_fx(prepared)
+    quantized = convert_pt2e(prepared)
 
     # Execute quantized model
     quant_outputs = quantized(*torch_inputs)
