@@ -1,8 +1,9 @@
-"""FX-based quantization smoke tests for representative synthetic ProtoFX-emitted graphs.
+"""PT2E quantization smoke tests for representative synthetic ProtoFX-emitted graphs.
 
-Verifies that small emitted ``GraphModule`` objects survive the FX post-training
-quantization pipeline (``prepare_fx`` → calibration → ``convert_fx`` → execute)
-without exceptions and produce outputs with the expected shape.
+Verifies that small emitted ``GraphModule`` objects survive the torchao PT2E
+quantization pipeline (``torch.export`` → ``prepare_pt2e`` → calibration →
+``convert_pt2e`` → execute) without exceptions and produce outputs with the
+expected shape.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import numpy as np
 import pytest
 from onnx import TensorProto, helper
 
-from tests.downstream.conftest import assert_quantize_survives, assert_quantize_survives_pt2e
+from tests.downstream.conftest import assert_quantize_survives_pt2e
 
 pytestmark = pytest.mark.downstream_validation
 
@@ -66,44 +67,6 @@ def _make_add_relu_model() -> helper.ModelProto:
 
 
 class TestQuantizeSmokeConv:
-    """FX quantization survival for a Conv graph."""
-
-    def test_quantize_survives(self) -> None:
-        """Conv graph must survive the FX quantization pipeline."""
-        rng = np.random.default_rng(42)
-        x = rng.standard_normal((1, 1, 5, 5)).astype(np.float32)
-        w = rng.standard_normal((1, 1, 3, 3)).astype(np.float32)
-        assert_quantize_survives(_make_conv_model(), {"X": x, "W": w})
-
-
-class TestQuantizeSmokeMatMul:
-    """FX quantization survival for a MatMul graph."""
-
-    def test_quantize_survives(self) -> None:
-        """MatMul graph must survive the FX quantization pipeline."""
-        rng = np.random.default_rng(42)
-        a = rng.standard_normal((2, 3)).astype(np.float32)
-        b = rng.standard_normal((3, 4)).astype(np.float32)
-        assert_quantize_survives(_make_matmul_model(), {"A": a, "B": b})
-
-
-class TestQuantizeSmokeAddRelu:
-    """FX quantization survival for an Add → Relu graph."""
-
-    def test_quantize_survives(self) -> None:
-        """Add+Relu graph must survive the FX quantization pipeline."""
-        rng = np.random.default_rng(42)
-        a = rng.standard_normal((2, 4)).astype(np.float32)
-        b = rng.standard_normal((2, 4)).astype(np.float32)
-        assert_quantize_survives(_make_add_relu_model(), {"A": a, "B": b})
-
-
-# ---------------------------------------------------------------------------
-# PT2E quantization smoke tests
-# ---------------------------------------------------------------------------
-
-
-class TestQuantizePT2ESmokeConv:
     """PT2E quantization survival for a Conv graph."""
 
     def test_quantize_survives(self) -> None:
@@ -114,7 +77,7 @@ class TestQuantizePT2ESmokeConv:
         assert_quantize_survives_pt2e(_make_conv_model(), {"X": x, "W": w})
 
 
-class TestQuantizePT2ESmokeMatMul:
+class TestQuantizeSmokeMatMul:
     """PT2E quantization survival for a MatMul graph."""
 
     def test_quantize_survives(self) -> None:
@@ -125,7 +88,7 @@ class TestQuantizePT2ESmokeMatMul:
         assert_quantize_survives_pt2e(_make_matmul_model(), {"A": a, "B": b})
 
 
-class TestQuantizePT2ESmokeAddRelu:
+class TestQuantizeSmokeAddRelu:
     """PT2E quantization survival for an Add → Relu graph."""
 
     def test_quantize_survives(self) -> None:
