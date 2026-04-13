@@ -35,7 +35,7 @@ The authoritative downstream validation surface is `tests/downstream/`.
 
 - `torch.compile`
 - `torch.export`
-- FX-based quantization (`torch.ao.quantization`)
+- PT2E quantization (`torchao.quantization.pt2e`)
 - custom FX-pass compatibility
 
 The suite may reuse small synthetic graphs or manifest-driven reference models, but ownership of the
@@ -58,20 +58,19 @@ The following are not part of the initial guarantee unless explicitly added late
 
 This narrow contract keeps Milestone 4 completion criteria concrete and reproducible.
 
-### FX-Based Quantization
+### PT2E Quantization
 
-The initial official support contract for FX quantization (`torch.ao.quantization`) uses the same narrow
-environment as `torch.compile`.
+The official support contract for PT2E quantization uses the same narrow environment as `torch.compile`.
 
 - Ubuntu CI CPU environment
 - project-supported Python and Torch versions
-- `prepare_fx` / `convert_fx` with a default static `QConfigMapping`
-- quantization backend `"x86"` on Linux, `"qnnpack"` on macOS/ARM
+- `torchao.quantization.pt2e` (`prepare_pt2e` / `convert_pt2e`) with a symmetric int8 static quantization config
+- custom `Quantizer` subclass using `torchao.quantization.pt2e.quantizer` primitives
 
 The following are not part of the initial guarantee:
 
 - dynamic quantization or quantization-aware training (QAT)
-- non-default `QConfigMapping` or per-layer overrides
+- per-layer quantization overrides or non-default quantization configs
 - exhaustive coverage across every supported model or operator combination
 
 ## Initial Coverage
@@ -83,9 +82,9 @@ The initial `torch.compile` representative scope covers both small and model-lev
 - fast compile smoke coverage on representative emitted graphs under `tests/downstream/`
 - manifest-backed end-to-end compile validation for selected models such as SqueezeNet, ResNet18, and BERT
 
-### FX-Based Quantization
+### PT2E Quantization
 
-The initial FX quantization representative scope covers both small and model-level cases.
+The initial PT2E quantization representative scope covers both small and model-level cases.
 
 - fast quantization smoke coverage on representative emitted graphs (Conv, MatMul, Add+Relu)
 - manifest-backed end-to-end quantization survival for SqueezeNet
@@ -106,16 +105,17 @@ For an in-scope `torch.compile` validation case to pass:
 2. `torch.compile(graph_module)` must execute without backend exceptions in the supported environment.
 3. Compiled outputs must be numerically close to eager outputs for the same emitted `GraphModule`.
 
-### FX-Based Quantization
+### PT2E Quantization
 
-For an in-scope FX quantization validation case to pass:
+For an in-scope PT2E quantization validation case to pass:
 
 1. `emit_graph()` must produce an eager `GraphModule` that runs successfully.
-2. `prepare_fx(graph_module, qconfig_mapping, example_inputs)` must complete without exceptions.
-3. A calibration forward pass on the prepared model must complete without exceptions.
-4. `convert_fx(prepared)` must complete without exceptions.
-5. A forward pass on the converted (quantized) model must complete without exceptions.
-6. Output shapes of the quantized model must match the eager model's output shapes.
+2. `torch.export.export(graph_module, inputs).module()` must produce an exported `GraphModule`.
+3. `prepare_pt2e(exported_gm, quantizer)` must complete without exceptions.
+4. A calibration forward pass on the prepared model must complete without exceptions.
+5. `convert_pt2e(prepared)` must complete without exceptions.
+6. A forward pass on the converted (quantized) model must complete without exceptions.
+7. Output shapes of the quantized model must match the eager model's output shapes.
 
 Numerical closeness between eager and quantized outputs is **not** part of the pass/fail contract because
 post-training quantization intentionally reduces precision.
