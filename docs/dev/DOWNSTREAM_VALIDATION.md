@@ -89,6 +89,13 @@ The initial PT2E quantization representative scope covers both small and model-l
 - fast quantization smoke coverage on representative emitted graphs (Conv, MatMul, Add+Relu)
 - manifest-backed end-to-end quantization survival for SqueezeNet
 
+### `torch.export`
+
+The initial `torch.export` round-trip representative scope covers small synthetic graphs only.
+
+- fast export round-trip smoke coverage on representative emitted graphs (Relu, Add+Relu, MatMul,
+  Conv, LayerNorm, multi-op Relu+Sigmoid)
+
 ### Custom FX Pass
 
 The initial custom FX pass representative scope covers small synthetic graphs only.
@@ -129,6 +136,15 @@ For an in-scope PT2E quantization validation case to pass:
 Numerical closeness between eager and quantized outputs is **not** part of the pass/fail contract because
 post-training quantization intentionally reduces precision.
 
+### `torch.export`
+
+For an in-scope `torch.export` round-trip validation case to pass:
+
+1. `emit_graph()` must produce an eager `GraphModule` that runs successfully.
+2. `torch.export.export(graph_module, inputs).module()` must produce an exported `GraphModule`.
+3. A forward pass on the exported module must complete without exceptions.
+4. Exported outputs must be numerically close to eager outputs for the same emitted `GraphModule`.
+
 ### Custom FX Pass
 
 For an in-scope custom FX pass validation case to pass:
@@ -152,13 +168,13 @@ tests/downstream/
 ├── conftest.py
 ├── test_compile_smoke.py
 ├── test_compile_models.py
+├── test_export_smoke.py
 ├── test_quantization_smoke.py
 ├── test_quantization_models.py
 └── test_fx_pass_smoke.py
 ```
 
-Future Milestone 4 work may extend the same suite with files dedicated to `torch.export` or additional
-model-level FX-pass checks.
+Future work may extend the same suite with model-level export or additional FX-pass checks.
 
 ## Execution Model
 
