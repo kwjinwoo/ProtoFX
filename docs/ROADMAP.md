@@ -81,7 +81,7 @@ Detailed downstream validation structure is documented in `docs/dev/DOWNSTREAM_V
 | ✅ | Eliminate non-writable NumPy-backed initializer buffers during FX emission so emitted `GraphModule` buffers are warning-free and safe to reuse |
 | ✅ | Migrate downstream quantization validation from deprecated `torch.ao.quantization` to `torchao.quantization.pt2e` |
 | ✅ | Custom FX pass compatibility |
-| 📋 | `torch.export` round-trip |
+| ✅ | `torch.export` round-trip |
 
 ---
 
