@@ -84,6 +84,64 @@ def assert_compile_parity(
         )
 
 
+def assert_export_roundtrip(
+    model: ModelProto,
+    inputs: dict[str, np.ndarray],
+    *,
+    rtol: float = 1e-5,
+    atol: float = 1e-5,
+) -> None:
+    """Assert eager vs ``torch.export`` round-trip numerical parity for a ProtoFX-emitted graph.
+
+    Steps:
+    1. Emit an eager ``GraphModule`` from the ONNX model.
+    2. Run the eager graph with the supplied inputs.
+    3. Export via ``torch.export.export`` and extract the module.
+    4. Run the exported module with the same inputs.
+    5. Assert the exported outputs are numerically close to the eager outputs.
+
+    Args:
+        model: A validated ``onnx.ModelProto``.
+        inputs: Mapping from input name to numpy array.
+        rtol: Relative tolerance for ``torch.testing.assert_close``.
+        atol: Absolute tolerance for ``torch.testing.assert_close``.
+
+    Raises:
+        AssertionError: If exported outputs diverge from eager outputs.
+    """
+    gm = build_eager_gm(model)
+
+    input_names = [
+        inp.name for inp in model.graph.input if inp.name not in {init.name for init in model.graph.initializer}
+    ]
+    torch_inputs = [torch.from_numpy(inputs[name]) for name in input_names]
+
+    # Eager forward
+    eager_outputs = gm(*torch_inputs)
+    if isinstance(eager_outputs, torch.Tensor):
+        eager_outputs = (eager_outputs,)
+
+    # Export round-trip
+    exported = torch.export.export(gm, tuple(torch_inputs))
+    exported_gm = exported.module()
+    exported_outputs = exported_gm(*torch_inputs)
+    if isinstance(exported_outputs, torch.Tensor):
+        exported_outputs = (exported_outputs,)
+
+    assert len(eager_outputs) == len(exported_outputs), (
+        f"Output count mismatch: eager={len(eager_outputs)}, exported={len(exported_outputs)}"
+    )
+
+    for i, (eager_out, exported_out) in enumerate(zip(eager_outputs, exported_outputs, strict=True)):
+        torch.testing.assert_close(
+            exported_out,
+            eager_out,
+            rtol=rtol,
+            atol=atol,
+            msg=f"Output {i}: exported vs eager mismatch",
+        )
+
+
 def assert_quantize_survives_pt2e(
     model: ModelProto,
     inputs: dict[str, np.ndarray],
