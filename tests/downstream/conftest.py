@@ -184,4 +184,95 @@ def assert_quantize_survives_pt2e(
     Raises:
         AssertionError: If any step in the PT2E quantization pipeline fails or output shapes diverge.
     """
-    raise NotImplementedError("PT2E quantization helper not yet implemented")
+    from torchao.quantization.pt2e.observer import MinMaxObserver
+    from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
+    from torchao.quantization.pt2e.quantizer import (
+        QuantizationAnnotation,
+        QuantizationConfig,
+        QuantizationSpec,
+        Quantizer,
+        get_input_act_qspec,
+        get_output_act_qspec,
+    )
+
+    act_spec = QuantizationSpec(
+        dtype=torch.int8,
+        quant_min=-128,
+        quant_max=127,
+        qscheme=torch.per_tensor_affine,
+        is_dynamic=False,
+        observer_or_fake_quant_ctr=MinMaxObserver.with_args(eps=2**-12),
+    )
+    weight_spec = QuantizationSpec(
+        dtype=torch.int8,
+        quant_min=-128,
+        quant_max=127,
+        qscheme=torch.per_tensor_symmetric,
+        is_dynamic=False,
+        observer_or_fake_quant_ctr=MinMaxObserver.with_args(eps=2**-12),
+    )
+    qconfig = QuantizationConfig(
+        input_activation=act_spec,
+        output_activation=act_spec,
+        weight=weight_spec,
+        bias=None,
+    )
+
+    class _SimpleStaticQuantizer(Quantizer):
+        """Minimal quantizer that annotates all call_function nodes with symmetric int8."""
+
+        def annotate(self, gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
+            for node in gm.graph.nodes:
+                if node.op == "call_function":
+                    input_qspec_map = {
+                        arg: get_input_act_qspec(qconfig) for arg in node.args if isinstance(arg, torch.fx.Node)
+                    }
+                    node.meta["quantization_annotation"] = QuantizationAnnotation(
+                        input_qspec_map=input_qspec_map,
+                        output_qspec=get_output_act_qspec(qconfig),
+                    )
+            return gm
+
+        def validate(self, gm: torch.fx.GraphModule) -> None:
+            pass
+
+    gm = build_eager_gm(model)
+
+    input_names = [
+        inp.name for inp in model.graph.input if inp.name not in {init.name for init in model.graph.initializer}
+    ]
+    torch_inputs = [torch.from_numpy(inputs[name]) for name in input_names]
+
+    # Eager forward — capture reference output shapes
+    eager_outputs = gm(*torch_inputs)
+    if isinstance(eager_outputs, torch.Tensor):
+        eager_outputs = (eager_outputs,)
+    expected_shapes = [out.shape for out in eager_outputs]
+
+    # Export and extract GraphModule
+    exported = torch.export.export(gm, tuple(torch_inputs))
+    exported_gm = exported.module()
+
+    # Prepare with SimpleStaticQuantizer
+    quantizer = _SimpleStaticQuantizer()
+    prepared = prepare_pt2e(exported_gm, quantizer)
+
+    # Calibrate
+    prepared(*torch_inputs)
+
+    # Convert
+    quantized = convert_pt2e(prepared)
+
+    # Execute quantized model
+    quant_outputs = quantized(*torch_inputs)
+    if isinstance(quant_outputs, torch.Tensor):
+        quant_outputs = (quant_outputs,)
+
+    assert len(quant_outputs) == len(expected_shapes), (
+        f"Output count mismatch: quantized={len(quant_outputs)}, expected={len(expected_shapes)}"
+    )
+
+    for i, (quant_out, exp_shape) in enumerate(zip(quant_outputs, expected_shapes, strict=True)):
+        assert quant_out.shape == exp_shape, (
+            f"Output {i}: shape mismatch: quantized={quant_out.shape}, expected={exp_shape}"
+        )
