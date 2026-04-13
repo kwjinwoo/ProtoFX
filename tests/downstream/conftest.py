@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -195,4 +196,57 @@ def assert_quantize_survives_pt2e(
     for i, (quant_out, exp_shape) in enumerate(zip(quant_outputs, expected_shapes, strict=True)):
         assert quant_out.shape == exp_shape, (
             f"Output {i}: shape mismatch: quantized={quant_out.shape}, expected={exp_shape}"
+        )
+
+
+def assert_fx_pass_survives(
+    model: ModelProto,
+    inputs: dict[str, np.ndarray],
+    pass_fn: Callable[[torch.fx.GraphModule, list[torch.Tensor]], torch.fx.GraphModule],
+) -> None:
+    """Assert that an FX pass executes successfully and output shapes are preserved.
+
+    Steps:
+    1. Emit an eager ``GraphModule`` from the ONNX model.
+    2. Run the eager graph to capture reference output shapes.
+    3. Apply ``pass_fn`` to the ``GraphModule``.
+    4. Run the transformed ``GraphModule`` and verify shapes match the reference.
+
+    Args:
+        model: A validated ``onnx.ModelProto``.
+        inputs: Mapping from input name to numpy array.
+        pass_fn: A callable that takes a ``GraphModule`` and sample inputs, applies an FX
+            transformation, and returns the (possibly mutated) ``GraphModule``.
+
+    Raises:
+        AssertionError: If the pass raises an exception or output shapes diverge.
+    """
+    gm = build_eager_gm(model)
+
+    input_names = [
+        inp.name for inp in model.graph.input if inp.name not in {init.name for init in model.graph.initializer}
+    ]
+    torch_inputs = [torch.from_numpy(inputs[name]) for name in input_names]
+
+    # Eager forward — capture reference output shapes
+    eager_outputs = gm(*torch_inputs)
+    if isinstance(eager_outputs, torch.Tensor):
+        eager_outputs = (eager_outputs,)
+    expected_shapes = [out.shape for out in eager_outputs]
+
+    # Apply FX pass
+    transformed_gm = pass_fn(gm, torch_inputs)
+
+    # Forward on the transformed graph
+    transformed_outputs = transformed_gm(*torch_inputs)
+    if isinstance(transformed_outputs, torch.Tensor):
+        transformed_outputs = (transformed_outputs,)
+
+    assert len(transformed_outputs) == len(expected_shapes), (
+        f"Output count mismatch: transformed={len(transformed_outputs)}, expected={len(expected_shapes)}"
+    )
+
+    for i, (trans_out, exp_shape) in enumerate(zip(transformed_outputs, expected_shapes, strict=True)):
+        assert trans_out.shape == exp_shape, (
+            f"Output {i}: shape mismatch: transformed={trans_out.shape}, expected={exp_shape}"
         )
