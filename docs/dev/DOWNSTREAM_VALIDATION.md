@@ -89,7 +89,16 @@ The initial PT2E quantization representative scope covers both small and model-l
 - fast quantization smoke coverage on representative emitted graphs (Conv, MatMul, Add+Relu)
 - manifest-backed end-to-end quantization survival for SqueezeNet
 
-Both scopes are representative gates, not exhaustive matrices.
+### Custom FX Pass
+
+The initial custom FX pass representative scope covers small synthetic graphs only.
+
+- Standard library FX pass (`torch.fx.passes.shape_prop.ShapeProp`) applied to representative emitted
+  graphs (Relu, Add+Relu, Conv, MatMul)
+- Custom node-replacement pass (Relu → LeakyRelu) applied to representative emitted graphs (Relu,
+  Add+Relu)
+
+All scopes are representative gates, not exhaustive matrices.
 
 - In-scope representative cases must all pass before the roadmap item can be marked complete.
 - Failures outside the agreed initial scope should be tracked separately rather than silently expanding the
@@ -120,6 +129,18 @@ For an in-scope PT2E quantization validation case to pass:
 Numerical closeness between eager and quantized outputs is **not** part of the pass/fail contract because
 post-training quantization intentionally reduces precision.
 
+### Custom FX Pass
+
+For an in-scope custom FX pass validation case to pass:
+
+1. `emit_graph()` must produce an eager `GraphModule` that runs successfully.
+2. The FX pass must execute on the emitted `GraphModule` without exceptions.
+3. A forward pass on the transformed `GraphModule` must complete without exceptions.
+4. Output shapes of the transformed model must match the eager model's output shapes.
+
+Numerical closeness between pre-pass and post-pass outputs is **not** part of the pass/fail contract
+because node-replacement passes intentionally alter graph semantics.
+
 Milestone completion does not allow known failures inside the agreed representative scope.
 
 ## Planned Suite Shape
@@ -132,11 +153,12 @@ tests/downstream/
 ├── test_compile_smoke.py
 ├── test_compile_models.py
 ├── test_quantization_smoke.py
-└── test_quantization_models.py
+├── test_quantization_models.py
+└── test_fx_pass_smoke.py
 ```
 
-Future Milestone 4 work may extend the same suite with files dedicated to `torch.export` or custom FX-pass
-checks.
+Future Milestone 4 work may extend the same suite with files dedicated to `torch.export` or additional
+model-level FX-pass checks.
 
 ## Execution Model
 
