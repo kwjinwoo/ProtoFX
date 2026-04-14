@@ -39,3 +39,17 @@ class TestViTB16Parity:
         except ImportError as exc:
             pytest.skip(f"Optional dependency unavailable: {exc}")
         assert_model_parity(onnx_path, manifest)
+
+
+@pytest.mark.model_validation
+class TestResNet50Parity:
+    """End-to-end ORT vs ProtoFX parity for ResNet50."""
+
+    def test_resnet50_parity(self, tmp_path: Path) -> None:
+        """ResNet50 manifest must produce numerically close ORT and ProtoFX outputs."""
+        manifest = load_manifest(_MANIFESTS_DIR / "vision" / "resnet50.yaml")
+        try:
+            onnx_path = materialize(manifest, cache_root=tmp_path)
+        except ImportError as exc:
+            pytest.skip(f"Optional dependency unavailable: {exc}")
+        assert_model_parity(onnx_path, manifest)
