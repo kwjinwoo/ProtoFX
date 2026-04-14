@@ -122,6 +122,8 @@ reference-model validation.
 
 See `docs/dev/MODEL_VALIDATION.md` for the detailed reference-model validation structure and asset policy.
 See `docs/dev/DOWNSTREAM_VALIDATION.md` for the detailed downstream-tooling validation contract.
+`docs/dev/SUPPORT_MATRIX.md` provides a derived reader-facing summary of current model and downstream-task coverage.
+That summary is subordinate to the authoritative pytest suites and manifests above.
 
 ## Architectural Boundary
 
@@ -159,9 +161,11 @@ The current architecture documentation is intentionally distributed:
 - `docs/adr/0003-milestone-1-ir-contract-reconciliation.md` — accepted Milestone 1 contract alignment.
 - `docs/adr/0004-externalized-reference-model-validation-assets.md` — accepted reference-model asset policy.
 - `docs/adr/0005-downstream-tooling-validation-boundary.md` — accepted downstream-tooling validation policy.
+- `docs/adr/0006-coverage-visibility-support-matrix.md` — accepted coverage-visibility policy.
 - `docs/dev/IR.md` — IR documentation hub.
 - `docs/dev/DOWNSTREAM_VALIDATION.md` — downstream-tooling validation suite structure and support contract.
 - `docs/dev/MODEL_VALIDATION.md` — reference-model validation suite structure and asset rules.
+- `docs/dev/SUPPORT_MATRIX.md` — derived support-matrix summary of current model and downstream-task coverage.
 - `docs/dev/ir/invariants.md` — IR invariants and validation-facing rules.
 - `docs/dev/ir/type-system.md` — tensor metadata and value classification model.
 - `docs/dev/ir/graph-model.md` — graph ownership and mutation APIs.

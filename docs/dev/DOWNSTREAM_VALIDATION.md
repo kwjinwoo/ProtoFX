@@ -21,6 +21,9 @@ That requires a validation layer distinct from both ONNX Runtime parity and fast
 
 These claims should not be collapsed into a single suite boundary.
 
+`docs/dev/SUPPORT_MATRIX.md` may summarize current model-by-task visibility for repository readers, but it remains a
+derived view and cannot widen the downstream contract defined here.
+
 ## Validation Boundary
 
 The authoritative downstream validation surface is `tests/downstream/`.
@@ -110,6 +113,8 @@ All scopes are representative gates, not exhaustive matrices.
 - In-scope representative cases must all pass before the roadmap item can be marked complete.
 - Failures outside the agreed initial scope should be tracked separately rather than silently expanding the
   completion contract.
+- Reader-facing support summaries must preserve this distinction rather than presenting representative validation as
+  exhaustive downstream support.
 
 ## Pass/Fail Contract
 

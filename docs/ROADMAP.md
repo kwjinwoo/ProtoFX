@@ -3,6 +3,7 @@
 This document tracks the planned development milestones for ProtoFX.
 Accepted architecture decisions are recorded in `docs/adr/`.
 Development specifications derived from those decisions live in `docs/dev/`.
+Current validated model and downstream-task visibility is summarized in `docs/dev/SUPPORT_MATRIX.md`.
 
 > **Status key**: ✅ Done · 🚧 In Progress · 📋 Planned · 💡 Under Consideration
 
@@ -91,6 +92,7 @@ Broaden reference-model coverage beyond the initial three families.
 
 | Status | Item |
 |--------|------|
+| 🚧 | Coverage hub / support matrix for validated models and downstream tasks |
 | 📋 | Additional vision models (ResNet50, EfficientNet, MobileNet, ...) |
 | 📋 | Additional NLP models (GPT-2, RoBERTa, DistilBERT, ...) |
 | 📋 | Multi-modal models (CLIP, ...) |
