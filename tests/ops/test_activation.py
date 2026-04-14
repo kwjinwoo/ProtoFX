@@ -1,13 +1,14 @@
 """Tests for activation op handlers.
 
 Covers Relu, Softmax, LogSoftmax, Gelu, Elu, LeakyRelu, Selu, Celu, PRelu,
-HardSigmoid, HardSwish, Mish, Softplus, Softsign, and ThresholdedRelu.
+HardSigmoid, HardSwish, Mish, Softplus, Softsign, ThresholdedRelu, and Clip.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
+import numpy as np
 import pytest
 import torch
 import torch.nn.functional as F
@@ -456,3 +457,87 @@ class TestThresholdedRelu:
         (result,) = gm(x)
         expected = torch.where(x > 0.5, x, torch.zeros_like(x))
         assert torch.allclose(result, expected, atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Clip — min/max as optional inputs (opset 11+)
+# ---------------------------------------------------------------------------
+
+
+def _make_clip_graph(*, has_min: bool = True, has_max: bool = True) -> Graph:
+    """Build a minimal IR graph: (X, [min], [max]) → Clip → Y.
+
+    Args:
+        has_min: Whether to provide a min constant input.
+        has_max: Whether to provide a max constant input.
+    """
+    g = Graph(name="Clip_test")
+    x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="X")
+    inputs: list = [x]
+
+    if has_min:
+        min_val = g.add_constant(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=()),
+            data=np.array(0.0, dtype=np.float32),
+            name="min",
+        )
+        inputs.append(min_val)
+    else:
+        inputs.append(g.add_sentinel())
+
+    if has_max:
+        max_val = g.add_constant(
+            tensor_type=TensorType(dtype=DType.FLOAT32, shape=()),
+            data=np.array(6.0, dtype=np.float32),
+            name="max",
+        )
+        inputs.append(max_val)
+    else:
+        inputs.append(g.add_sentinel())
+
+    node = g.make_node(
+        op_type="Clip",
+        inputs=inputs,
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+        output_names=["Y"],
+    )
+    g.set_graph_outputs(list(node.outputs))
+    return g
+
+
+class TestClip:
+    """Verify Clip handler with min/max inputs (opset 11+)."""
+
+    def test_clip_min_and_max(self) -> None:
+        """Clip with both min and max must clamp values correctly."""
+        g = _make_clip_graph(has_min=True, has_max=True)
+        gm = emit_graph(g)
+        x = torch.tensor([[-1.0, 3.0, 7.0], [0.0, 6.0, 10.0]])
+        (result,) = gm(x)
+        expected = torch.clamp(x, min=0.0, max=6.0)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    def test_clip_min_only(self) -> None:
+        """Clip with only min (max omitted) must clamp lower bound only."""
+        g = _make_clip_graph(has_min=True, has_max=False)
+        gm = emit_graph(g)
+        x = torch.tensor([[-1.0, 3.0, 7.0], [0.0, 6.0, 10.0]])
+        (result,) = gm(x)
+        expected = torch.clamp(x, min=0.0)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    def test_clip_max_only(self) -> None:
+        """Clip with only max (min omitted) must clamp upper bound only."""
+        g = _make_clip_graph(has_min=False, has_max=True)
+        gm = emit_graph(g)
+        x = torch.tensor([[-1.0, 3.0, 7.0], [0.0, 6.0, 10.0]])
+        (result,) = gm(x)
+        expected = torch.clamp(x, max=6.0)
+        assert torch.allclose(result, expected, atol=1e-6)
+
+    def test_clip_emits_call_function(self) -> None:
+        """Clip must emit a call_function FX node."""
+        g = _make_clip_graph(has_min=True, has_max=True)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
