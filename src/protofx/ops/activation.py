@@ -413,3 +413,32 @@ def _thresholded_relu(
     gt_node = fx_graph.call_function(torch.gt, args=(args[0], alpha))
     zeros_node = fx_graph.call_function(torch.zeros_like, args=(args[0],))
     return [fx_graph.call_function(torch.where, args=(gt_node, args[0], zeros_node))]
+
+
+@register_op("Clip", opset_range=(11, 21))
+def _clip(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.clamp`` for the ONNX Clip op (opset ≥ 11).
+
+    ONNX Clip inputs (opset 11+): ``[input, min, max]`` where ``min`` and
+    ``max`` are optional. A ``None`` (sentinel) entry means the bound is
+    omitted.
+
+    Args:
+        node: The IR Clip node.
+        args: Up to three-element list ``[input, min?, max?]``.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Clip).
+
+    Returns:
+        A single-element list containing the clamp FX call_function node.
+    """
+    import torch
+
+    min_node = args[1] if len(args) > 1 else None
+    max_node = args[2] if len(args) > 2 else None
+    return [fx_graph.call_function(torch.clamp, args=(args[0],), kwargs={"min": min_node, "max": max_node})]
