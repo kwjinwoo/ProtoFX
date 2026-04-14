@@ -81,3 +81,17 @@ class TestMobileNetV2Parity:
         except ImportError as exc:
             pytest.skip(f"Optional dependency unavailable: {exc}")
         assert_model_parity(onnx_path, manifest)
+
+
+@pytest.mark.model_validation
+class TestMobileNetV3SmallParity:
+    """End-to-end ORT vs ProtoFX parity for MobileNetV3-Small."""
+
+    def test_mobilenet_v3_small_parity(self, tmp_path: Path) -> None:
+        """MobileNetV3-Small manifest must produce numerically close ORT and ProtoFX outputs."""
+        manifest = load_manifest(_MANIFESTS_DIR / "vision" / "mobilenet_v3_small.yaml")
+        try:
+            onnx_path = materialize(manifest, cache_root=tmp_path)
+        except ImportError as exc:
+            pytest.skip(f"Optional dependency unavailable: {exc}")
+        assert_model_parity(onnx_path, manifest)
