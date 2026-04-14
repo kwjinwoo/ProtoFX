@@ -92,7 +92,7 @@ Broaden reference-model coverage beyond the initial three families.
 
 | Status | Item |
 |--------|------|
-| 🚧 | Coverage hub / support matrix for validated models and downstream tasks |
+| ✅ | Coverage hub / support matrix for validated models and downstream tasks |
 | 📋 | Additional vision models (ResNet50, EfficientNet, MobileNet, ...) |
 | 📋 | Additional NLP models (GPT-2, RoBERTa, DistilBERT, ...) |
 | 📋 | Multi-modal models (CLIP, ...) |
