@@ -69,6 +69,16 @@ src/protofx/
 | **Ops** | Per-op conversion handlers registered by ONNX op name/domain |
 | **Utils** | Shape inference, type mapping, and shared helpers |
 
+## Current Coverage
+
+| Family | Validated Models | Model-Level Downstream Validation |
+|--------|-----------------|-----------------------------------|
+| Smoke / baseline | SqueezeNet | `torch.compile`, PT2E quantization |
+| Vision | ResNet18, ViT-B/16 | `torch.compile` on ResNet18 |
+| NLP | BERT | `torch.compile` on BERT |
+
+For the full model-by-task matrix and status definitions, see [docs/dev/SUPPORT_MATRIX.md](docs/dev/SUPPORT_MATRIX.md).
+
 ## Development
 
 ```bash
