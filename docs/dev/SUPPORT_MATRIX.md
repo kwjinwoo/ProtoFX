@@ -42,7 +42,7 @@ If this document disagrees with those sources, the suites and manifests win.
 | Family Group | Current Validated Models | Current Model-Level Downstream Validation | Roadmap Expansion |
 |--------------|--------------------------|-------------------------------------------|-------------------|
 | Smoke / baseline | SqueezeNet (`squeezenet1_0`) | `torch.compile`, PT2E quantization | Retain as the fastest end-to-end gate |
-| Vision | ResNet18, ViT-B/16 | `torch.compile` on ResNet18 | ResNet50, EfficientNet, MobileNet, ... |
+| Vision | ResNet18, ResNet50, ViT-B/16, EfficientNet-B0, MobileNetV2, MobileNetV3-Small | `torch.compile` on ResNet18 | EfficientNet-B1+, MobileNet-Large, ... |
 | NLP | BERT | `torch.compile` on BERT | GPT-2, RoBERTa, DistilBERT, ... |
 | Multi-modal | None today | None today | CLIP, ... |
 
@@ -53,6 +53,10 @@ If this document disagrees with those sources, the suites and manifests win.
 | SqueezeNet (`squeezenet1_0`) | Smoke / baseline | `Validated` | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` |
 | ResNet18 | Vision | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
 | ViT-B/16 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| ResNet50 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| EfficientNet-B0 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| MobileNetV2 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| MobileNetV3-Small | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
 | BERT | NLP | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
 
 ## Interpretation Rules
