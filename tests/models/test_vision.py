@@ -1,4 +1,4 @@
-"""Vision model family parity tests (ResNet18, ViT-B/16)."""
+"""Vision model family parity tests (ResNet18, ResNet50, ViT-B/16, EfficientNet-B0, MobileNetV2, MobileNetV3-Small)."""
 
 from __future__ import annotations
 
@@ -48,6 +48,20 @@ class TestResNet50Parity:
     def test_resnet50_parity(self, tmp_path: Path) -> None:
         """ResNet50 manifest must produce numerically close ORT and ProtoFX outputs."""
         manifest = load_manifest(_MANIFESTS_DIR / "vision" / "resnet50.yaml")
+        try:
+            onnx_path = materialize(manifest, cache_root=tmp_path)
+        except ImportError as exc:
+            pytest.skip(f"Optional dependency unavailable: {exc}")
+        assert_model_parity(onnx_path, manifest)
+
+
+@pytest.mark.model_validation
+class TestEfficientNetB0Parity:
+    """End-to-end ORT vs ProtoFX parity for EfficientNet-B0."""
+
+    def test_efficientnet_b0_parity(self, tmp_path: Path) -> None:
+        """EfficientNet-B0 manifest must produce numerically close ORT and ProtoFX outputs."""
+        manifest = load_manifest(_MANIFESTS_DIR / "vision" / "efficientnet_b0.yaml")
         try:
             onnx_path = materialize(manifest, cache_root=tmp_path)
         except ImportError as exc:

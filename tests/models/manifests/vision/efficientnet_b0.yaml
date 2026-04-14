@@ -1,0 +1,12 @@
+family: torchvision
+model_name: efficientnet_b0
+opset: 18
+pretrained: false
+seed: 42
+input_shapes:
+  input: [1, 3, 224, 224]
+tolerances:
+  rtol: 1.0e-4
+  atol: 1.0e-4
+required_extras:
+  - models
