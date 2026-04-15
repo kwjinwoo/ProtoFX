@@ -363,3 +363,70 @@ def _reduce_sumsquare(
 
     sq_node = fx_graph.call_function(_torch.square, args=(args[0],))
     return [fx_graph.call_function(_torch.sum, args=(sq_node,), kwargs=_sum_kwargs(axes, keepdims))]
+
+
+# ---------------------------------------------------------------------------
+# CumSum
+# ---------------------------------------------------------------------------
+
+
+def _cumsum_impl(x: torch.Tensor, dim: int, exclusive: bool, reverse: bool) -> torch.Tensor:
+    """Pure-Python CumSum implementation matching ONNX semantics.
+
+    Args:
+        x: The input tensor.
+        dim: The axis along which to compute cumulative sum.
+        exclusive: If ``True``, exclude the current element.
+        reverse: If ``True``, compute in reverse direction.
+
+    Returns:
+        Cumulative sum tensor with the same shape as *x*.
+    """
+    import torch
+
+    if reverse:
+        x = torch.flip(x, dims=[dim])
+
+    result = torch.cumsum(x, dim=dim)
+
+    if exclusive:
+        result = torch.roll(result, shifts=1, dims=dim)
+        result = result.index_fill(dim, torch.tensor([0], device=x.device), 0.0)
+
+    if reverse:
+        result = torch.flip(result, dims=[dim])
+
+    return result
+
+
+@register_op("CumSum", opset_range=(11, 21))
+def _cumsum(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit a CumSum call for the ONNX CumSum op.
+
+    Supports ``exclusive`` and ``reverse`` attributes. The axis is statically
+    extracted from the second input.
+
+    Args:
+        node: The IR CumSum node.
+        args: Two-element list; first is the data FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for CumSum).
+
+    Returns:
+        A single-element list containing the CumSum FX call_function node.
+    """
+    axis_value = node.inputs[1]
+    if axis_value.data is None:
+        msg = "CumSum: axis input has no static data"
+        raise NotImplementedError(msg)
+    dim = int(axis_value.data.flat[0])
+
+    exclusive = bool(node.attributes.get("exclusive", 0))
+    reverse = bool(node.attributes.get("reverse", 0))
+
+    return [fx_graph.call_function(_cumsum_impl, args=(args[0], dim, exclusive, reverse))]
