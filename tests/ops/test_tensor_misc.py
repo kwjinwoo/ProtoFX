@@ -382,6 +382,52 @@ class TestIsNaNHandler:
 
 
 # ---------------------------------------------------------------------------
+# GatherElements
+# ---------------------------------------------------------------------------
+
+
+class TestGatherElementsHandler:
+    """Verify that the GatherElements op handler emits correct FX nodes."""
+
+    def test_emits_call_function(self) -> None:
+        """GatherElements must emit a call_function FX node."""
+        g = Graph(name="GatherElements_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 3)), name="X")
+        idx = g.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=(2, 3)), name="indices")
+        node = g.make_node(
+            op_type="GatherElements",
+            inputs=[x, idx],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+            output_names=["Y"],
+            attributes={"axis": 0},
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_forward_correctness(self) -> None:
+        """GatherElements must produce correct results."""
+        g = Graph(name="GatherElements_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 3)), name="X")
+        idx = g.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=(2, 3)), name="indices")
+        node = g.make_node(
+            op_type="GatherElements",
+            inputs=[x, idx],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+            output_names=["Y"],
+            attributes={"axis": 0},
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        x_data = torch.arange(9, dtype=torch.float32).reshape(3, 3)
+        idx_data = torch.tensor([[2, 0, 1], [0, 2, 1]], dtype=torch.long)
+        (result,) = gm(x_data, idx_data)
+        expected = torch.gather(x_data, 0, idx_data)
+        assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
 # Trilu
 # ---------------------------------------------------------------------------
 

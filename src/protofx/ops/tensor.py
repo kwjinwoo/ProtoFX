@@ -627,3 +627,32 @@ def _trilu(
             diagonal = int(k_value.data.flat[0])
 
     return [fx_graph.call_function(torch_fn, args=(args[0],), kwargs={"diagonal": diagonal})]
+
+
+# ---------------------------------------------------------------------------
+# GatherElements
+# ---------------------------------------------------------------------------
+
+
+@register_op("GatherElements", opset_range=(11, 21))
+def _gather_elements(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.gather`` for the ONNX GatherElements op.
+
+    Args:
+        node: The IR GatherElements node.
+        args: Two-element list; first is the data FX node, second is indices FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for GatherElements).
+
+    Returns:
+        A single-element list containing the gather FX call_function node.
+    """
+    import torch
+
+    axis = int(node.attributes.get("axis", 0))
+    return [fx_graph.call_function(torch.gather, args=(args[0], axis, args[1]))]

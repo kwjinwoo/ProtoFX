@@ -72,3 +72,29 @@ class TestBinaryElementwiseHandler:
         (result,) = gm(a, b)
         expected = torch_fn(a, b)
         assert torch.allclose(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# Equal
+# ---------------------------------------------------------------------------
+
+
+class TestEqualHandler:
+    """Verify that the Equal op handler emits correct FX nodes."""
+
+    def test_emits_call_function(self) -> None:
+        """Equal must emit a call_function FX node."""
+        g = _make_binary_graph("Equal")
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_forward_correctness(self) -> None:
+        """Equal must produce correct boolean results."""
+        g = _make_binary_graph("Equal")
+        gm = emit_graph(g)
+        a = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        b = torch.tensor([[1.0, 3.0, 3.0], [4.0, 0.0, 6.0]])
+        (result,) = gm(a, b)
+        expected = torch.eq(a, b)
+        assert torch.equal(result, expected)

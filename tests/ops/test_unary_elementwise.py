@@ -75,3 +75,44 @@ class TestUnaryElementwiseHandler:
         (result,) = gm(x)
         expected = torch_fn(x)
         assert torch.allclose(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# Not
+# ---------------------------------------------------------------------------
+
+
+class TestNotHandler:
+    """Verify that the Not op handler emits correct FX nodes."""
+
+    def test_emits_call_function(self) -> None:
+        """Not must emit a call_function FX node."""
+        g = Graph(name="Not_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=(2, 3)), name="X")
+        node = g.make_node(
+            op_type="Not",
+            inputs=[x],
+            output_types=[TensorType(dtype=DType.BOOL, shape=(2, 3))],
+            output_names=["Y"],
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_forward_correctness(self) -> None:
+        """Not must produce correct boolean negation."""
+        g = Graph(name="Not_test")
+        x = g.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=(4,)), name="X")
+        node = g.make_node(
+            op_type="Not",
+            inputs=[x],
+            output_types=[TensorType(dtype=DType.BOOL, shape=(4,))],
+            output_names=["Y"],
+        )
+        g.set_graph_outputs(list(node.outputs))
+        gm = emit_graph(g)
+        x_data = torch.tensor([True, False, True, False])
+        (result,) = gm(x_data)
+        expected = torch.logical_not(x_data)
+        assert torch.equal(result, expected)

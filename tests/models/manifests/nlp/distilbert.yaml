@@ -1,0 +1,19 @@
+family: transformers
+model_name: DistilBERT
+opset: 17
+pretrained: false
+seed: 42
+input_shapes:
+  input_ids: [1, 128]
+  attention_mask: [1, 128]
+input_dtypes:
+  input_ids: int64
+  attention_mask: int64
+tolerances:
+  rtol: 1.0e-4
+  atol: 1.0e-4
+required_extras:
+  - models
+export_kwargs:
+  config_class: DistilBertConfig
+  model_class: DistilBertModel

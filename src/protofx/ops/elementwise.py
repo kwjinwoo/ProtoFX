@@ -394,3 +394,49 @@ def _isnan(
     import torch
 
     return [fx_graph.call_function(torch.isnan, args=(args[0],))]
+
+
+@register_op("Equal", opset_range=(11, 21))
+def _equal(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.eq`` for the ONNX Equal op.
+
+    Args:
+        node: The IR Equal node.
+        args: Two-element list containing the input FX nodes.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Equal).
+
+    Returns:
+        A single-element list containing the eq FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.eq, args=(args[0], args[1]))]
+
+
+@register_op("Not", opset_range=(11, 21))
+def _not(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.logical_not`` for the ONNX Not op.
+
+    Args:
+        node: The IR Not node.
+        args: Single-element list containing the input FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Not).
+
+    Returns:
+        A single-element list containing the logical_not FX call_function node.
+    """
+    import torch
+
+    return [fx_graph.call_function(torch.logical_not, args=(args[0],))]
