@@ -379,3 +379,106 @@ class TestIsNaNHandler:
         (result,) = gm(x_data)
         expected = torch.isnan(x_data)
         assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# Trilu
+# ---------------------------------------------------------------------------
+
+
+def _make_trilu_graph(
+    input_shape: tuple[int, ...],
+    upper: int = 1,
+    k: int | None = None,
+) -> Graph:
+    """Build a minimal IR graph: X [, k] → Trilu(upper) → Y.
+
+    Args:
+        input_shape: Shape of the input tensor.
+        upper: 1 for upper triangular, 0 for lower triangular.
+        k: Optional diagonal offset. Positive shifts up, negative shifts down.
+    """
+    g = Graph(name="Trilu_test")
+    x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=input_shape), name="X")
+
+    inputs = [x]
+    if k is not None:
+        k_val = g.add_initializer(
+            tensor_type=TensorType(dtype=DType.INT64, shape=()),
+            data=np.array(k, dtype=np.int64),
+            name="k",
+        )
+        inputs.append(k_val)
+
+    node = g.make_node(
+        op_type="Trilu",
+        inputs=inputs,
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=input_shape)],
+        output_names=["Y"],
+        attributes={"upper": upper},
+    )
+    g.set_graph_outputs(list(node.outputs))
+    return g
+
+
+class TestTriluHandler:
+    """Verify that the Trilu op handler emits correct FX nodes."""
+
+    def test_emits_call_function(self) -> None:
+        """Trilu must emit a call_function FX node."""
+        g = _make_trilu_graph((3, 4), upper=1)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_single_output(self) -> None:
+        """Trilu handler must return exactly one FX output node."""
+        g = _make_trilu_graph((3, 4), upper=1)
+        gm = emit_graph(g)
+        output_node = next(n for n in gm.graph.nodes if n.op == "output")
+        assert len(output_node.args[0]) == 1
+
+    def test_forward_correctness_upper(self) -> None:
+        """Trilu with upper=1 must produce upper triangular matrix."""
+        g = _make_trilu_graph((4, 4), upper=1)
+        gm = emit_graph(g)
+        x = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+        (result,) = gm(x)
+        expected = torch.triu(x)
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_lower(self) -> None:
+        """Trilu with upper=0 must produce lower triangular matrix."""
+        g = _make_trilu_graph((4, 4), upper=0)
+        gm = emit_graph(g)
+        x = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+        (result,) = gm(x)
+        expected = torch.tril(x)
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_upper_with_k(self) -> None:
+        """Trilu upper with k=1 must shift the diagonal up by 1."""
+        g = _make_trilu_graph((4, 4), upper=1, k=1)
+        gm = emit_graph(g)
+        x = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+        (result,) = gm(x)
+        expected = torch.triu(x, diagonal=1)
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_lower_with_negative_k(self) -> None:
+        """Trilu lower with k=-1 must shift the diagonal down by 1."""
+        g = _make_trilu_graph((4, 4), upper=0, k=-1)
+        gm = emit_graph(g)
+        x = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+        (result,) = gm(x)
+        expected = torch.tril(x, diagonal=-1)
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_non_square(self) -> None:
+        """Trilu must work on non-square matrices."""
+        g = _make_trilu_graph((3, 5), upper=1)
+        gm = emit_graph(g)
+        x = torch.arange(15, dtype=torch.float32).reshape(3, 5)
+        (result,) = gm(x)
+        expected = torch.triu(x)
+        assert torch.equal(result, expected)
