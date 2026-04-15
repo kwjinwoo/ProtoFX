@@ -490,3 +490,115 @@ class TestCompoundReduceForwardCorrectness:
         x = torch.rand(2, 3) + 0.1
         (result,) = gm(x)
         assert torch.allclose(result, x)
+
+
+# ---------------------------------------------------------------------------
+# CumSum
+# ---------------------------------------------------------------------------
+
+
+def _make_cumsum_graph(
+    input_shape: tuple[int, ...],
+    axis: int,
+    *,
+    exclusive: int = 0,
+    reverse: int = 0,
+) -> Graph:
+    """Build a minimal IR graph: X, axis → CumSum → Y.
+
+    Args:
+        input_shape: Shape of the input tensor.
+        axis: The axis along which to compute cumulative sum.
+        exclusive: If 1, exclude the current element from the cumulative sum.
+        reverse: If 1, perform cumulative sum in reverse direction.
+    """
+    g = Graph(name="CumSum_test")
+    x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=input_shape), name="X")
+
+    axis_val = g.add_initializer(
+        tensor_type=TensorType(dtype=DType.INT64, shape=()),
+        data=np.array(axis, dtype=np.int64),
+        name="axis",
+    )
+
+    attrs: dict[str, int] = {}
+    if exclusive:
+        attrs["exclusive"] = exclusive
+    if reverse:
+        attrs["reverse"] = reverse
+
+    node = g.make_node(
+        op_type="CumSum",
+        inputs=[x, axis_val],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=input_shape)],
+        output_names=["Y"],
+        attributes=attrs,
+    )
+    g.set_graph_outputs(list(node.outputs))
+    return g
+
+
+class TestCumSumHandler:
+    """Verify that the CumSum op handler emits correct FX nodes."""
+
+    def test_emits_call_function(self) -> None:
+        """CumSum must emit a call_function FX node."""
+        g = _make_cumsum_graph((3, 4), axis=0)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_single_output(self) -> None:
+        """CumSum handler must return exactly one FX output node."""
+        g = _make_cumsum_graph((3, 4), axis=0)
+        gm = emit_graph(g)
+        output_node = next(n for n in gm.graph.nodes if n.op == "output")
+        assert len(output_node.args[0]) == 1
+
+    def test_forward_correctness_axis_0(self) -> None:
+        """CumSum along axis=0 must produce correct results."""
+        g = _make_cumsum_graph((3, 4), axis=0)
+        gm = emit_graph(g)
+        x = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+        (result,) = gm(x)
+        expected = torch.cumsum(x, dim=0)
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_axis_1(self) -> None:
+        """CumSum along axis=1 must produce correct results."""
+        g = _make_cumsum_graph((3, 4), axis=1)
+        gm = emit_graph(g)
+        x = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+        (result,) = gm(x)
+        expected = torch.cumsum(x, dim=1)
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_exclusive(self) -> None:
+        """CumSum with exclusive=1 must exclude the current element."""
+        g = _make_cumsum_graph((4,), axis=0, exclusive=1)
+        gm = emit_graph(g)
+        x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+        (result,) = gm(x)
+        # exclusive cumsum: [0, 1, 3, 6]
+        expected = torch.tensor([0.0, 1.0, 3.0, 6.0])
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_reverse(self) -> None:
+        """CumSum with reverse=1 must compute cumulative sum in reverse."""
+        g = _make_cumsum_graph((4,), axis=0, reverse=1)
+        gm = emit_graph(g)
+        x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+        (result,) = gm(x)
+        # reverse cumsum: [10, 9, 7, 4]
+        expected = torch.tensor([10.0, 9.0, 7.0, 4.0])
+        assert torch.equal(result, expected)
+
+    def test_forward_correctness_exclusive_reverse(self) -> None:
+        """CumSum with exclusive=1 and reverse=1 must combine both modes."""
+        g = _make_cumsum_graph((4,), axis=0, exclusive=1, reverse=1)
+        gm = emit_graph(g)
+        x = torch.tensor([1.0, 2.0, 3.0, 4.0])
+        (result,) = gm(x)
+        # exclusive reverse cumsum: [9, 7, 4, 0]
+        expected = torch.tensor([9.0, 7.0, 4.0, 0.0])
+        assert torch.equal(result, expected)
