@@ -585,3 +585,45 @@ def _split(
 
     split_node = fx_graph.call_function(torch.split, args=(args[0], split_sizes, axis))
     return [fx_graph.call_function(operator.getitem, args=(split_node, i)) for i in range(num_outputs)]
+
+
+# ---------------------------------------------------------------------------
+# Trilu
+# ---------------------------------------------------------------------------
+
+
+@register_op("Trilu", opset_range=(14, 21))
+def _trilu(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.triu`` or ``torch.tril`` for the ONNX Trilu op.
+
+    Selects upper or lower triangular based on the ``upper`` attribute
+    (default 1 = upper). An optional second input provides the diagonal
+    offset *k*.
+
+    Args:
+        node: The IR Trilu node.
+        args: One or two element list; first is the data FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Trilu).
+
+    Returns:
+        A single-element list containing the triu/tril FX call_function node.
+    """
+    import torch
+
+    upper = int(node.attributes.get("upper", 1))
+    torch_fn = torch.triu if upper else torch.tril
+
+    # Optional diagonal offset k (second input)
+    diagonal = 0
+    if len(node.inputs) >= 2:
+        k_value = node.inputs[1]
+        if k_value.data is not None:
+            diagonal = int(k_value.data.flat[0])
+
+    return [fx_graph.call_function(torch_fn, args=(args[0],), kwargs={"diagonal": diagonal})]
