@@ -535,3 +535,53 @@ def _gather_nd(
     """
     batch_dims = int(node.attributes.get("batch_dims", 0))
     return [fx_graph.call_function(_gather_nd_impl, args=(args[0], args[1], batch_dims))]
+
+
+# ---------------------------------------------------------------------------
+# Split
+# ---------------------------------------------------------------------------
+
+
+@register_op("Split", opset_range=(11, 21))
+def _split(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.split`` for the ONNX Split op.
+
+    Supports both explicit split sizes (opset 13+: second input tensor) and
+    equal-chunk splitting (``num_outputs`` attribute with no split input).
+
+    Args:
+        node: The IR Split node.
+        args: One or two element list; first is the data FX node.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for Split).
+
+    Returns:
+        A list of FX nodes, one per split output chunk.
+    """
+    import operator
+
+    import torch
+
+    axis = int(node.attributes.get("axis", 0))
+    num_outputs = len(node.outputs)
+
+    # Determine split sizes
+    if len(node.inputs) >= 2:
+        split_sizes = list(_extract_static_int_data(node, 1))
+    else:
+        # Equal split: infer chunk size from input shape and num_outputs
+        input_shape = node.inputs[0].tensor_type.shape
+        if input_shape is None:
+            msg = "Split: input tensor has no static shape for equal split"
+            raise NotImplementedError(msg)
+        dim_size = input_shape[axis]
+        chunk_size = dim_size // num_outputs
+        split_sizes = chunk_size
+
+    split_node = fx_graph.call_function(torch.split, args=(args[0], split_sizes, axis))
+    return [fx_graph.call_function(operator.getitem, args=(split_node, i)) for i in range(num_outputs)]
