@@ -222,3 +222,149 @@ class TestSliceHandler:
         (result,) = gm(x)
         expected = x[1:3]
         assert torch.equal(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# Split
+# ---------------------------------------------------------------------------
+
+
+def _make_split_graph(
+    input_shape: tuple[int, ...],
+    split_sizes: tuple[int, ...],
+    axis: int = 0,
+    *,
+    num_outputs: int | None = None,
+) -> Graph:
+    """Build a minimal IR graph: X, split → Split(axis) → Y0, Y1, ...
+
+    The split parameter is provided as an initializer (static extraction).
+
+    Args:
+        input_shape: Shape of the input tensor.
+        split_sizes: Sizes of each split chunk along *axis*.
+        axis: The axis to split along.
+        num_outputs: Number of outputs. Defaults to ``len(split_sizes)``.
+    """
+    if num_outputs is None:
+        num_outputs = len(split_sizes)
+
+    g = Graph(name="Split_test")
+    x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=input_shape), name="X")
+
+    split_val = g.add_initializer(
+        tensor_type=TensorType(dtype=DType.INT64, shape=(len(split_sizes),)),
+        data=np.array(split_sizes, dtype=np.int64),
+        name="split",
+    )
+
+    # Compute output shapes
+    out_types = []
+    for size in split_sizes:
+        out_shape = list(input_shape)
+        out_shape[axis] = size
+        out_types.append(TensorType(dtype=DType.FLOAT32, shape=tuple(out_shape)))
+
+    node = g.make_node(
+        op_type="Split",
+        inputs=[x, split_val],
+        output_types=out_types,
+        output_names=[f"Y_{i}" for i in range(num_outputs)],
+        attributes={"axis": axis},
+    )
+    g.set_graph_outputs(list(node.outputs))
+    return g
+
+
+def _make_split_graph_no_split_input(
+    input_shape: tuple[int, ...],
+    num_outputs: int,
+    axis: int = 0,
+) -> Graph:
+    """Build a Split IR graph without a split sizes input (equal split).
+
+    Args:
+        input_shape: Shape of the input tensor.
+        num_outputs: Number of equal output chunks.
+        axis: The axis to split along.
+    """
+    chunk_size = input_shape[axis] // num_outputs
+    g = Graph(name="Split_equal_test")
+    x = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=input_shape), name="X")
+
+    out_types = []
+    for _ in range(num_outputs):
+        out_shape = list(input_shape)
+        out_shape[axis] = chunk_size
+        out_types.append(TensorType(dtype=DType.FLOAT32, shape=tuple(out_shape)))
+
+    node = g.make_node(
+        op_type="Split",
+        inputs=[x],
+        output_types=out_types,
+        output_names=[f"Y_{i}" for i in range(num_outputs)],
+        attributes={"axis": axis, "num_outputs": num_outputs},
+    )
+    g.set_graph_outputs(list(node.outputs))
+    return g
+
+
+class TestSplitHandler:
+    """Verify that the Split op handler emits correct FX nodes."""
+
+    def test_emits_call_function(self) -> None:
+        """Split must emit a call_function FX node."""
+        g = _make_split_graph((6, 4), split_sizes=(3, 3), axis=0)
+        gm = emit_graph(g)
+        ops = [n.op for n in gm.graph.nodes]
+        assert "call_function" in ops
+
+    def test_multiple_outputs(self) -> None:
+        """Split handler must return multiple FX output nodes."""
+        g = _make_split_graph((6, 4), split_sizes=(2, 4), axis=0)
+        gm = emit_graph(g)
+        output_node = next(n for n in gm.graph.nodes if n.op == "output")
+        assert len(output_node.args[0]) == 2
+
+    def test_forward_correctness_equal_split(self) -> None:
+        """Equal split along axis=0 must produce correct results."""
+        g = _make_split_graph((6, 4), split_sizes=(3, 3), axis=0)
+        gm = emit_graph(g)
+        x = torch.arange(24, dtype=torch.float32).reshape(6, 4)
+        y0, y1 = gm(x)
+        expected = torch.split(x, [3, 3], dim=0)
+        assert torch.equal(y0, expected[0])
+        assert torch.equal(y1, expected[1])
+
+    def test_forward_correctness_unequal_split(self) -> None:
+        """Unequal split along axis=1 must produce correct results."""
+        g = _make_split_graph((3, 7), split_sizes=(2, 3, 2), axis=1)
+        gm = emit_graph(g)
+        x = torch.arange(21, dtype=torch.float32).reshape(3, 7)
+        y0, y1, y2 = gm(x)
+        expected = torch.split(x, [2, 3, 2], dim=1)
+        assert torch.equal(y0, expected[0])
+        assert torch.equal(y1, expected[1])
+        assert torch.equal(y2, expected[2])
+
+    def test_forward_correctness_no_split_input(self) -> None:
+        """Split without explicit split sizes must split equally."""
+        g = _make_split_graph_no_split_input((6, 4), num_outputs=3, axis=0)
+        gm = emit_graph(g)
+        x = torch.arange(24, dtype=torch.float32).reshape(6, 4)
+        y0, y1, y2 = gm(x)
+        expected = torch.split(x, 2, dim=0)
+        assert torch.equal(y0, expected[0])
+        assert torch.equal(y1, expected[1])
+        assert torch.equal(y2, expected[2])
+
+    def test_forward_correctness_three_outputs(self) -> None:
+        """Split into three chunks along axis=0 must produce correct results."""
+        g = _make_split_graph((9, 2), split_sizes=(2, 3, 4), axis=0)
+        gm = emit_graph(g)
+        x = torch.arange(18, dtype=torch.float32).reshape(9, 2)
+        y0, y1, y2 = gm(x)
+        expected = torch.split(x, [2, 3, 4], dim=0)
+        assert torch.equal(y0, expected[0])
+        assert torch.equal(y1, expected[1])
+        assert torch.equal(y2, expected[2])
