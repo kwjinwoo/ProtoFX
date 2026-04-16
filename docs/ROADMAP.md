@@ -95,8 +95,7 @@ Broaden reference-model coverage beyond the initial three families.
 | ✅ | Coverage hub / support matrix for validated models and downstream tasks |
 | ✅ | Additional vision models (ResNet50, EfficientNet-B0, MobileNetV2, MobileNetV3-Small) |
 | ✅ | Additional NLP models (RoBERTa, DistilBERT) |
-| 📋 | Multi-modal models (CLIP, ...) |
-| 📋 | Op handler coverage for new model families |
+| ✅ | Multi-modal models (CLIP) |
 
 ---
 
