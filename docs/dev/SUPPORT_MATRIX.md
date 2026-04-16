@@ -43,7 +43,7 @@ If this document disagrees with those sources, the suites and manifests win.
 |--------------|--------------------------|-------------------------------------------|-------------------|
 | Smoke / baseline | SqueezeNet (`squeezenet1_0`) | `torch.compile`, PT2E quantization | Retain as the fastest end-to-end gate |
 | Vision | ResNet18, ResNet50, ViT-B/16, EfficientNet-B0, MobileNetV2, MobileNetV3-Small | `torch.compile` on ResNet18 | EfficientNet-B1+, MobileNet-Large, ... |
-| NLP | BERT | `torch.compile` on BERT | GPT-2, RoBERTa, DistilBERT, ... |
+| NLP | BERT, RoBERTa, DistilBERT | `torch.compile` on BERT | GPT-2, ... |
 | Multi-modal | None today | None today | CLIP, ... |
 
 ## Current Model-By-Task Matrix
@@ -58,6 +58,8 @@ If this document disagrees with those sources, the suites and manifests win.
 | MobileNetV2 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
 | MobileNetV3-Small | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
 | BERT | NLP | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| RoBERTa | NLP | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| DistilBERT | NLP | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
 
 ## Interpretation Rules
 

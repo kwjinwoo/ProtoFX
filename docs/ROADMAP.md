@@ -94,7 +94,7 @@ Broaden reference-model coverage beyond the initial three families.
 |--------|------|
 | ✅ | Coverage hub / support matrix for validated models and downstream tasks |
 | ✅ | Additional vision models (ResNet50, EfficientNet-B0, MobileNetV2, MobileNetV3-Small) |
-| 📋 | Additional NLP models (GPT-2, RoBERTa, DistilBERT, ...) |
+| ✅ | Additional NLP models (RoBERTa, DistilBERT) |
 | 📋 | Multi-modal models (CLIP, ...) |
 | 📋 | Op handler coverage for new model families |
 
@@ -105,6 +105,7 @@ Broaden reference-model coverage beyond the initial three families.
 Ideas not yet scheduled. Discuss with `@Architect` before moving to a milestone.
 
 - Opset ≤12 normalization pass in importer (e.g. Squeeze/Unsqueeze axes attr → input conversion)
+- GPT-2 reference-model validation: `torch.export.export(strict=False)` currently fails during materialization with `AttributeError: 'FakeTensor' object has no attribute 'get_seq_length'` in `transformers.models.gpt2.GPT2Model.forward`
 - Control-flow op support (If, Loop, Scan)
 - Dynamic shape / symbolic shape propagation
 - Plugin system for 3rd-party op domains
