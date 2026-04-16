@@ -430,3 +430,48 @@ def _cumsum(
     reverse = bool(node.attributes.get("reverse", 0))
 
     return [fx_graph.call_function(_cumsum_impl, args=(args[0], dim, exclusive, reverse))]
+
+
+# ---------------------------------------------------------------------------
+# ArgMax
+# ---------------------------------------------------------------------------
+
+
+@register_op("ArgMax", opset_range=(11, 21))
+def _argmax(
+    node: Node,
+    args: list[torch.fx.Node | None],
+    fx_graph: torch.fx.Graph,
+    module: torch.nn.Module,
+) -> list[torch.fx.Node]:
+    """Emit ``torch.argmax`` for the ONNX ArgMax op.
+
+    Reads ``axis`` (default 0), ``keepdims`` (default 1), and
+    ``select_last_index`` (default 0) attributes from the IR node.
+
+    ``select_last_index=1`` is not supported because ``torch.argmax``
+    always returns the first occurrence.
+
+    Args:
+        node: The IR ArgMax node.
+        args: Input FX nodes; first element is the data tensor.
+        fx_graph: The FX graph being constructed.
+        module: The root module (unused for ArgMax).
+
+    Returns:
+        A single-element list containing the ArgMax FX call_function node.
+
+    Raises:
+        NotImplementedError: If ``select_last_index=1`` is requested.
+    """
+    import torch as _torch
+
+    axis = int(node.attributes.get("axis", 0))
+    keepdims = bool(node.attributes.get("keepdims", 1))
+    select_last_index = int(node.attributes.get("select_last_index", 0))
+
+    if select_last_index:
+        msg = "ArgMax: select_last_index=1 is not supported"
+        raise NotImplementedError(msg)
+
+    return [fx_graph.call_function(_torch.argmax, args=(args[0],), kwargs={"dim": axis, "keepdim": keepdims})]
