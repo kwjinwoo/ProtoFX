@@ -99,11 +99,20 @@ Broaden reference-model coverage beyond the initial three families.
 
 ---
 
+## Milestone 6 — Legacy Opset Compatibility
+
+Broaden default-domain opset coverage by normalizing representation-only schema differences in the importer.
+
+| Status | Item |
+|--------|------|
+| 📋 | Importer normalization for default-domain opset 11-12 representation differences, starting with Squeeze and Unsqueeze axes attribute-to-input conversion |
+
+---
+
 ## Under Consideration 💡
 
 Ideas not yet scheduled. Discuss with `@Architect` before moving to a milestone.
 
-- Opset ≤12 normalization pass in importer (e.g. Squeeze/Unsqueeze axes attr → input conversion)
 - GPT-2 reference-model validation: `torch.export.export(strict=False)` currently fails during materialization with `AttributeError: 'FakeTensor' object has no attribute 'get_seq_length'` in `transformers.models.gpt2.GPT2Model.forward`
 - Control-flow op support (If, Loop, Scan)
 - Dynamic shape / symbolic shape propagation
