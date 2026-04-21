@@ -121,6 +121,32 @@ class TestSqueezeParity:
         model = helper.make_model(graph, opset_imports=[_OPSET])
         assert_parity(model, {"X": x})
 
+    @pytest.mark.parametrize("opset", [11, 12])
+    def test_legacy_axes_attribute(self, opset: int) -> None:
+        """Legacy attribute-form Squeeze must match ORT in opset 11-12."""
+        rng = np.random.default_rng(42)
+        x = rng.standard_normal((1, 3, 1, 4)).astype(np.float32)
+
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 3, 1, 4])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 4])
+        node = helper.make_node("Squeeze", ["X"], ["Y"], axes=[0, 2])
+        graph = helper.make_graph([node], f"squeeze_legacy_axes_{opset}", [X], [Y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        assert_parity(model, {"X": x})
+
+    @pytest.mark.parametrize("opset", [11, 12])
+    def test_legacy_no_axes(self, opset: int) -> None:
+        """Legacy Squeeze without axes must match ORT in opset 11-12."""
+        rng = np.random.default_rng(42)
+        x = rng.standard_normal((1, 3, 1)).astype(np.float32)
+
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 3, 1])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3])
+        node = helper.make_node("Squeeze", ["X"], ["Y"])
+        graph = helper.make_graph([node], f"squeeze_legacy_no_axes_{opset}", [X], [Y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        assert_parity(model, {"X": x})
+
 
 # ---------------------------------------------------------------------------
 # Unsqueeze
@@ -142,6 +168,19 @@ class TestUnsqueezeParity:
         node = helper.make_node("Unsqueeze", ["X", "axes"], ["Y"])
         graph = helper.make_graph([node], "unsqueeze_test", [X], [Y], initializer=[axes_init])
         model = helper.make_model(graph, opset_imports=[_OPSET])
+        assert_parity(model, {"X": x})
+
+    @pytest.mark.parametrize("opset", [11, 12])
+    def test_legacy_axes_attribute(self, opset: int) -> None:
+        """Legacy attribute-form Unsqueeze must match ORT in opset 11-12."""
+        rng = np.random.default_rng(42)
+        x = rng.standard_normal((3, 4)).astype(np.float32)
+
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 4])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3, 4, 1])
+        node = helper.make_node("Unsqueeze", ["X"], ["Y"], axes=[0, 3])
+        graph = helper.make_graph([node], f"unsqueeze_legacy_axes_{opset}", [X], [Y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
         assert_parity(model, {"X": x})
 
 
