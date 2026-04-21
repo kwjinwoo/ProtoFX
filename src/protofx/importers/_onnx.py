@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import onnx
 
 from protofx.ir.dim import Dim
+from protofx.ir.dtype import DType
 from protofx.ir.graph import Graph
 from protofx.ir.node import AttributeValue
 from protofx.ir.shape import Shape
@@ -327,6 +329,47 @@ def _normalize_conv_auto_pad(
     attributes["auto_pad"] = b"NOTSET"
 
 
+def _normalize_legacy_axes_input(
+    graph: Graph,
+    node_proto: onnx.NodeProto,
+    inputs: list[Value],
+    attributes: dict[str, AttributeValue],
+    *,
+    default_opset: int | None,
+) -> None:
+    """Normalize legacy Squeeze/Unsqueeze ``axes`` attributes to constant inputs.
+
+    In default-domain opset 11-12, Squeeze and Unsqueeze encode axes as an
+    attribute instead of an input tensor. ProtoFX canonicalizes those schema
+    differences at import time so downstream IR consumers only observe the
+    input-tensor form.
+
+    Args:
+        graph: The IR graph being built.
+        node_proto: The source ONNX node proto.
+        inputs: Mutable imported input list for the node.
+        attributes: Mutable normalized attribute dict for the node.
+        default_opset: Default-domain opset version from the model.
+    """
+    if default_opset not in (11, 12):
+        return
+    if node_proto.domain not in ("", "ai.onnx"):
+        return
+    if node_proto.op_type not in ("Squeeze", "Unsqueeze"):
+        return
+
+    axes_attr = attributes.pop("axes", None)
+    if axes_attr is None:
+        return
+
+    axes_data = np.asarray([int(axis) for axis in axes_attr], dtype=np.int64)
+    axes_value = graph.add_constant(
+        tensor_type=TensorType(dtype=DType.INT64, shape=(len(axes_data),)),
+        data=axes_data,
+    )
+    inputs.append(axes_value)
+
+
 def _import_nodes(
     graph: Graph,
     graph_proto: onnx.GraphProto,
@@ -382,6 +425,14 @@ def _import_nodes(
         # Normalize Conv/ConvTranspose auto_pad to explicit pads
         if node_proto.op_type in ("Conv", "ConvTranspose") and node_proto.domain in ("", "ai.onnx"):
             _normalize_conv_auto_pad(attributes, node_proto, value_registry, vi_map)
+
+        _normalize_legacy_axes_input(
+            graph,
+            node_proto,
+            inputs,
+            attributes,
+            default_opset=default_opset,
+        )
 
         # Resolve opset version: use node-level domain opset or model default
         opset_version = default_opset if node_proto.domain in ("", "ai.onnx") else None
