@@ -138,22 +138,23 @@ def _flatten(
 
 
 # ---------------------------------------------------------------------------
-# Squeeze (opset 13+: axes as optional input tensor)
+# Squeeze (opset 11+: importer normalizes legacy axes to optional input tensor)
 # ---------------------------------------------------------------------------
 
 
-@register_op("Squeeze", opset_range=(13, 21))
+@register_op("Squeeze", opset_range=(11, 21))
 def _squeeze(
     node: Node,
     args: list[torch.fx.Node | None],
     fx_graph: torch.fx.Graph,
     module: torch.nn.Module,
 ) -> list[torch.fx.Node]:
-    """Emit ``torch.squeeze`` for the ONNX Squeeze op (opset 13+).
+    """Emit ``torch.squeeze`` for the ONNX Squeeze op (opset 11+).
 
     If an axes input is provided (second input), axes are statically extracted
     and applied in descending order. If no axes input is present, all dims
-    of size 1 are squeezed.
+    of size 1 are squeezed. Legacy opset 11-12 models are normalized by the
+    importer into this same input-based form.
 
     Args:
         node: The IR Squeeze node.
@@ -179,21 +180,23 @@ def _squeeze(
 
 
 # ---------------------------------------------------------------------------
-# Unsqueeze (opset 13+: axes as input tensor)
+# Unsqueeze (opset 11+: importer normalizes legacy axes to input tensor)
 # ---------------------------------------------------------------------------
 
 
-@register_op("Unsqueeze", opset_range=(13, 21))
+@register_op("Unsqueeze", opset_range=(11, 21))
 def _unsqueeze(
     node: Node,
     args: list[torch.fx.Node | None],
     fx_graph: torch.fx.Graph,
     module: torch.nn.Module,
 ) -> list[torch.fx.Node]:
-    """Emit ``torch.unsqueeze`` for the ONNX Unsqueeze op (opset 13+).
+    """Emit ``torch.unsqueeze`` for the ONNX Unsqueeze op (opset 11+).
 
     Axes are statically extracted from the second input and applied
     in ascending order (after normalizing negatives) to keep indices stable.
+    Legacy opset 11-12 models are normalized by the importer into this same
+    input-based form.
 
     Args:
         node: The IR Unsqueeze node.
