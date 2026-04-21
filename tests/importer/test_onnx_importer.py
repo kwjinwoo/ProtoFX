@@ -644,6 +644,131 @@ class TestConstantOpInlining:
         assert const_input.tensor_type.shape == (2, 3)
 
 
+def _make_legacy_squeeze_model(
+    *,
+    opset: int,
+    input_shape: list[int],
+    output_shape: list[int],
+    axes: list[int] | None,
+) -> onnx.ModelProto:
+    """Build an opset 11-12 Squeeze model using legacy attribute-form axes.
+
+    Args:
+        opset: Default-domain opset version.
+        input_shape: Input tensor shape.
+        output_shape: Output tensor shape.
+        axes: Optional legacy ``axes`` attribute value.
+
+    Returns:
+        A minimal ONNX model containing a legacy-form Squeeze node.
+    """
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, input_shape)
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)
+
+    kwargs: dict[str, object] = {}
+    if axes is not None:
+        kwargs["axes"] = axes
+
+    squeeze = helper.make_node("Squeeze", ["X"], ["Y"], **kwargs)
+    return _make_model([X], outputs=[Y], nodes=[squeeze], opset=opset)
+
+
+def _make_legacy_unsqueeze_model(
+    *,
+    opset: int,
+    input_shape: list[int],
+    output_shape: list[int],
+    axes: list[int],
+) -> onnx.ModelProto:
+    """Build an opset 11-12 Unsqueeze model using legacy attribute-form axes.
+
+    Args:
+        opset: Default-domain opset version.
+        input_shape: Input tensor shape.
+        output_shape: Output tensor shape.
+        axes: Required legacy ``axes`` attribute value.
+
+    Returns:
+        A minimal ONNX model containing a legacy-form Unsqueeze node.
+    """
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, input_shape)
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)
+    unsqueeze = helper.make_node("Unsqueeze", ["X"], ["Y"], axes=axes)
+    return _make_model([X], outputs=[Y], nodes=[unsqueeze], opset=opset)
+
+
+class TestLegacyAxesNormalization:
+    """Verify importer normalization of legacy Squeeze/Unsqueeze axes attributes."""
+
+    def test_squeeze_without_axes_remains_single_input(self) -> None:
+        """Legacy Squeeze without axes must stay as a single-input node.
+
+        The optional axes attribute in opset 11-12 should not synthesize an
+        extra input when it is absent.
+        """
+        for opset in (11, 12):
+            model = _make_legacy_squeeze_model(
+                opset=opset,
+                input_shape=[1, 3, 1],
+                output_shape=[3],
+                axes=None,
+            )
+
+            g = import_model(model)
+
+            node = g.nodes[0]
+            assert node.op_type == "Squeeze"
+            assert node.opset_version == opset
+            assert len(node.inputs) == 1
+            assert "axes" not in node.attributes
+            assert len(g.initializers) == 0
+
+    def test_squeeze_axes_attribute_becomes_constant_input(self) -> None:
+        """Legacy Squeeze axes must normalize to a synthetic CONSTANT input."""
+        for opset in (11, 12):
+            model = _make_legacy_squeeze_model(
+                opset=opset,
+                input_shape=[1, 3, 1, 4],
+                output_shape=[3, 4],
+                axes=[0, 2],
+            )
+
+            g = import_model(model)
+
+            node = g.nodes[0]
+            axes_input = node.inputs[1]
+            assert node.opset_version == opset
+            assert len(node.inputs) == 2
+            assert axes_input.kind == ValueKind.CONSTANT
+            assert axes_input.tensor_type.dtype == DType.INT64
+            np.testing.assert_array_equal(axes_input.data, np.array([0, 2], dtype=np.int64))
+            assert "axes" not in node.attributes
+            assert len(g.initializers) == 0
+
+    def test_unsqueeze_axes_attribute_becomes_constant_input(self) -> None:
+        """Legacy Unsqueeze axes must normalize to a synthetic CONSTANT input."""
+        for opset in (11, 12):
+            model = _make_legacy_unsqueeze_model(
+                opset=opset,
+                input_shape=[3, 4],
+                output_shape=[1, 3, 4, 1],
+                axes=[0, 3],
+            )
+
+            g = import_model(model)
+
+            node = g.nodes[0]
+            axes_input = node.inputs[1]
+            assert node.op_type == "Unsqueeze"
+            assert node.opset_version == opset
+            assert len(node.inputs) == 2
+            assert axes_input.kind == ValueKind.CONSTANT
+            assert axes_input.tensor_type.dtype == DType.INT64
+            np.testing.assert_array_equal(axes_input.data, np.array([0, 3], dtype=np.int64))
+            assert "axes" not in node.attributes
+            assert len(g.initializers) == 0
+
+
 # ── import_model Entry Point ─────────────────────────────────────────
 
 
