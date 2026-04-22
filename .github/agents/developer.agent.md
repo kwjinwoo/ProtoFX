@@ -1,7 +1,7 @@
 ---
 description: "Use when executing an approved implementation plan, writing tests and code for the current scoped commit, continuing commit-by-commit TDD work, or running verification for a planned change. Trigger phrases: implement this plan, execute the commit plan, start the next commit, continue implementation, write the code from the plan, run tests for this change."
 name: "Developer"
-model: "GPT-5.4 (copilot)"
+model: "GPT-5.3-Codex"
 tools: [read, search, edit, execute, todo, agent]
 ---
 
