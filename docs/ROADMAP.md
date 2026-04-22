@@ -105,7 +105,7 @@ Broaden default-domain opset coverage by normalizing representation-only schema 
 
 | Status | Item |
 |--------|------|
-| 📋 | Importer normalization for default-domain opset 11-12 representation differences, starting with Squeeze and Unsqueeze axes attribute-to-input conversion |
+| ✅ | Importer normalization for default-domain opset 11-12 representation differences, starting with Squeeze and Unsqueeze axes attribute-to-input conversion |
 
 ---
 
