@@ -10,6 +10,8 @@ ONNX ModelProto ──▶ Importer ──▶ Thin Normalized IR ──▶ Valida
 
 Accepted architecture decisions are recorded in `docs/adr/`.
 Detailed subsystem specifications live under `docs/dev/`.
+Public API reference lives under `docs/src/`.
+For agent-oriented navigation across the documentation tree, start at `docs/README.md`.
 Milestone 1 IR contract reconciliation is recorded in `docs/adr/0003-milestone-1-ir-contract-reconciliation.md`.
 
 ## Documentation System
@@ -19,8 +21,10 @@ not collapse into a single document.
 
 | Document area | Purpose | Authority |
 |---------------|---------|-----------|
+| `docs/README.md` | Agent-facing navigation and document selection | Navigation only; not an authority surface |
 | `docs/adr/` | Records accepted architecture decisions and their rationale | Source of truth for structural decisions |
 | `docs/dev/` | Records technical specifications derived from accepted decisions | Source of truth for implementation-facing contracts |
+| `docs/src/` | Records public API reference and module-level usage notes | Reference surface for exported APIs |
 | `docs/ROADMAP.md` | Records milestones, priorities, and project-level sequencing | Source of truth for planned project scope |
 | Temporary workboard (when present) | User-maintained execution checklist for directing agents | Convenience only; not authoritative for architecture |
 
@@ -102,8 +106,8 @@ ProtoFX treats validation as part of the architecture, not as an ad hoc scriptin
 | `tests/utils/` | Verifies shared boundary helpers such as dtype conversion utilities. |
 | `tests/ops/` | Verifies handler behavior and emitted FX structure with small targeted fixtures. |
 | `tests/parity/` | Verifies op-level ONNX Runtime parity using synthetic models built in code. |
-| `tests/models/` | Verifies manifest-driven reference-model parity for standard model families such as SqueezeNet, ResNet, BERT, and ViT. |
-| `tests/downstream/` | Verifies compatibility of emitted `GraphModule` objects with downstream PyTorch tooling such as `torch.compile`, `torch.export`, FX quantization, and custom FX passes. |
+| `tests/models/` | Verifies manifest-driven reference-model parity; exact current model coverage is declared by manifests and suite contents. |
+| `tests/downstream/` | Verifies representative compatibility of emitted `GraphModule` objects with downstream PyTorch tooling such as `torch.compile`, `torch.export`, FX quantization, and custom FX passes. |
 
 Reference-model validation follows a different asset boundary than small parity tests.
 
@@ -122,7 +126,7 @@ reference-model validation.
 
 See `docs/dev/MODEL_VALIDATION.md` for the detailed reference-model validation structure and asset policy.
 See `docs/dev/DOWNSTREAM_VALIDATION.md` for the detailed downstream-tooling validation contract.
-`docs/dev/SUPPORT_MATRIX.md` provides a derived reader-facing summary of current model and downstream-task coverage.
+`docs/dev/SUPPORT_MATRIX.md` provides a derived representative summary of current validation anchors.
 That summary is subordinate to the authoritative pytest suites and manifests above.
 
 ## Architectural Boundary
@@ -151,25 +155,12 @@ allowing a convenient object-oriented API for graph consumers.
 Milestone 1 does not require `graph.nodes` itself to remain physically topologically sorted after every graph
 mutation. Consumers that require dependency-safe order must use `Graph.topological_sort()`.
 
-## Documentation Map
+## Documentation Entry Point
 
-The current architecture documentation is intentionally distributed:
+The documentation tree is intentionally split by authority and purpose.
 
-- `docs/adr/README.md` — ADR index and process.
-- `docs/adr/0001-thin-graph-owned-ir.md` — accepted IR architecture decision.
-- `docs/adr/0002-documentation-system.md` — accepted documentation and decision-recording model.
-- `docs/adr/0003-milestone-1-ir-contract-reconciliation.md` — accepted Milestone 1 contract alignment.
-- `docs/adr/0004-externalized-reference-model-validation-assets.md` — accepted reference-model asset policy.
-- `docs/adr/0005-downstream-tooling-validation-boundary.md` — accepted downstream-tooling validation policy.
-- `docs/adr/0006-coverage-visibility-support-matrix.md` — accepted coverage-visibility policy.
-- `docs/dev/IR.md` — IR documentation hub.
-- `docs/dev/DOWNSTREAM_VALIDATION.md` — downstream-tooling validation suite structure and support contract.
-- `docs/dev/MODEL_VALIDATION.md` — reference-model validation suite structure and asset rules.
-- `docs/dev/SUPPORT_MATRIX.md` — derived support-matrix summary of current model and downstream-task coverage.
-- `docs/dev/ir/invariants.md` — IR invariants and validation-facing rules.
-- `docs/dev/ir/type-system.md` — tensor metadata and value classification model.
-- `docs/dev/ir/graph-model.md` — graph ownership and mutation APIs.
-- `docs/dev/ir/contracts.md` — importer, validator, and emitter boundaries.
-
-This split is intentional. Architecture documents should stay navigable enough that both humans and agents can
-determine which document is authoritative before reading implementation details.
+- Start at `docs/README.md` to choose the right document for the current question.
+- Use `docs/adr/` for accepted decisions and rationale.
+- Use `docs/dev/` for implementation-facing contracts and boundaries.
+- Use `docs/src/` for public API reference.
+- Use `docs/ROADMAP.md` for planned scope rather than current guarantees.

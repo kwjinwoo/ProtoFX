@@ -46,20 +46,20 @@ compatibility claim remains with `tests/downstream/`, not with the source suite 
 
 ## Supported Environment
 
-The initial official support contract for `torch.compile` compatibility is intentionally narrow.
+The current official support contract for `torch.compile` compatibility is intentionally narrow.
 
 - Ubuntu CI CPU environment
 - project-supported Python and Torch versions
 - default `torch.compile` backend
 
-The following are not part of the initial guarantee unless explicitly added later:
+The following are not part of the current guarantee unless explicitly added later:
 
 - macOS or Windows-specific behavior
 - GPU execution
 - non-default `torch.compile` backends
 - exhaustive coverage across every supported model or operator combination
 
-This narrow contract keeps Milestone 4 completion criteria concrete and reproducible.
+This narrow contract keeps downstream guarantees concrete and reproducible.
 
 ### PT2E Quantization
 
@@ -70,38 +70,38 @@ The official support contract for PT2E quantization uses the same narrow environ
 - `torchao.quantization.pt2e` (`prepare_pt2e` / `convert_pt2e`) with a symmetric int8 static quantization config
 - custom `Quantizer` subclass using `torchao.quantization.pt2e.quantizer` primitives
 
-The following are not part of the initial guarantee:
+The following are not part of the current guarantee:
 
 - dynamic quantization or quantization-aware training (QAT)
 - per-layer quantization overrides or non-default quantization configs
 - exhaustive coverage across every supported model or operator combination
 
-## Initial Coverage
+## Representative Coverage Contract
 
 ### `torch.compile`
 
-The initial `torch.compile` representative scope covers both small and model-level cases.
+The current `torch.compile` representative scope covers both small and model-level cases.
 
 - fast compile smoke coverage on representative emitted graphs under `tests/downstream/`
 - manifest-backed end-to-end compile validation for selected models such as SqueezeNet, ResNet18, and BERT
 
 ### PT2E Quantization
 
-The initial PT2E quantization representative scope covers both small and model-level cases.
+The current PT2E quantization representative scope covers both small and model-level cases.
 
 - fast quantization smoke coverage on representative emitted graphs (Conv, MatMul, Add+Relu)
 - manifest-backed end-to-end quantization survival for SqueezeNet
 
 ### `torch.export`
 
-The initial `torch.export` round-trip representative scope covers small synthetic graphs only.
+The current `torch.export` round-trip representative scope covers small synthetic graphs only.
 
 - fast export round-trip smoke coverage on representative emitted graphs (Relu, Add+Relu, MatMul,
   Conv, LayerNorm, multi-op Relu+Sigmoid)
 
 ### Custom FX Pass
 
-The initial custom FX pass representative scope covers small synthetic graphs only.
+The current custom FX pass representative scope covers small synthetic graphs only.
 
 - Standard library FX pass (`torch.fx.passes.shape_prop.ShapeProp`) applied to representative emitted
   graphs (Relu, Add+Relu, Conv, MatMul)
@@ -111,7 +111,7 @@ The initial custom FX pass representative scope covers small synthetic graphs on
 All scopes are representative gates, not exhaustive matrices.
 
 - In-scope representative cases must all pass before the roadmap item can be marked complete.
-- Failures outside the agreed initial scope should be tracked separately rather than silently expanding the
+- Failures outside the agreed representative scope should be tracked separately rather than silently expanding the
   completion contract.
 - Reader-facing support summaries must preserve this distinction rather than presenting representative validation as
   exhaustive downstream support.
@@ -164,36 +164,20 @@ because node-replacement passes intentionally alter graph semantics.
 
 Milestone completion does not allow known failures inside the agreed representative scope.
 
-## Planned Suite Shape
-
-The detailed file list may evolve, but the intended suite boundary looks like this:
-
-```text
-tests/downstream/
-├── conftest.py
-├── test_compile_smoke.py
-├── test_compile_models.py
-├── test_export_smoke.py
-├── test_quantization_smoke.py
-├── test_quantization_models.py
-└── test_fx_pass_smoke.py
-```
-
-Future work may extend the same suite with model-level export or additional FX-pass checks.
-
 ## Execution Model
 
-The downstream suite is expected to be heavier than default fast tests and should use its own pytest marker.
+The downstream suite is heavier than default fast tests and uses its own pytest marker declared in
+`pyproject.toml`.
 
-Planned command surface:
+Recommended command surface:
 
 ```bash
 pytest tests/downstream/ -m downstream_validation -v
-pytest tests/downstream/test_compile_smoke.py -m downstream_validation -v
 pytest tests/ -m "not model_validation and not downstream_validation" -v
 ```
 
-The marker and exact command surface become part of the implementation contract when the suite is added.
+Narrower file-scoped invocations are useful for local debugging, but the full marked suite remains the
+authoritative downstream validation surface.
 
 ## Relationship to Scripts
 

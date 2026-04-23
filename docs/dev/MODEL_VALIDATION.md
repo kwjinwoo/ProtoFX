@@ -45,43 +45,20 @@ Downstream PyTorch-tooling compatibility is intentionally outside this document'
 
 This keeps source control focused on reviewable intent instead of generated binary payloads.
 
-## Current Suite Structure
+## Authoritative Sources
 
-The current `tests/models/` layout is:
-
-```text
-tests/models/
-├── _cache.py
-├── _manifest.py
-├── conftest.py
-├── manifests/
-│   ├── nlp/
-│   │   └── bert.yaml
-│   ├── smoke/
-│   │   └── smoke.yaml
-│   └── vision/
-│       ├── resnet18.yaml
-│       └── vit_b_16.yaml
-├── test_nlp.py
-├── test_smoke.py
-└── test_vision.py
-```
-
-- `_manifest.py` parses YAML into `ModelManifest` and enforces required fields and types.
-- `_cache.py` materializes cache-backed ONNX exports from validated manifests.
-- `conftest.py` provides the smoke fixtures and the shared `assert_model_parity()` helper.
-- `test_smoke.py`, `test_vision.py`, and `test_nlp.py` are all gated with `@pytest.mark.model_validation`.
-
-This separation is intentional.
+The exact current suite inventory may evolve, but the validation boundary does not.
 
 - `tests/parity/` stays optimized for small code-generated models and fast operator-focused feedback.
 - `tests/models/` carries heavier end-to-end validation concerns, optional dependencies, asset caching, and
   broader family-level coverage.
+- `tests/models/manifests/` declares the exact current reference-model set.
+- `tests/models/` owns the authoritative ONNX Runtime parity claims for those manifests.
 - Downstream PyTorch-tooling compatibility claims remain outside this suite boundary even when they reuse
   the same manifests or exported artifacts.
 - Helper scripts may assist materialization, but they do not replace the suite boundary above.
-- `docs/dev/SUPPORT_MATRIX.md` may present a reader-facing rollup of current model coverage, but that rollup does
-  not own the underlying parity claim.
+- `docs/dev/SUPPORT_MATRIX.md` may present a representative summary, but that summary does not own the underlying
+  parity claim.
 
 ## Manifest Contract
 
@@ -148,9 +125,11 @@ All current model-family tests use the `model_validation` marker declared in `py
 
 ```bash
 pytest tests/models/ -m model_validation -v
-pytest tests/models/test_smoke.py -m model_validation -v
 pytest tests/ -m "not model_validation" -v
 ```
+
+Narrower file-scoped invocations are useful for local debugging, but the full marked suite remains the
+authoritative validation surface.
 
 When optional model-family dependencies are unavailable, the tests skip by catching `ImportError` during
 materialization rather than failing with an import-time crash.
@@ -189,18 +168,13 @@ the exported artifact or parity expectations, use a fresh cache root or remove t
 For transformer manifests, `config_class` and `model_class` live inside `export_kwargs`, so changing either
 also changes cache identity.
 
-## Local vs CI Execution
+## Execution Model
 
-Reference-model validation remains a heavier suite than routine fast tests, and the current structure reflects
-that distinction.
+Reference-model validation is heavier than the default fast feedback path.
 
-- The fastest local end-to-end check is `tests/models/test_smoke.py`, which exercises the full
-  manifest-materialization, import, emit, and ORT parity path on a small `torchvision` model.
-- Broader local investigation can run `tests/models/test_vision.py` or `tests/models/test_nlp.py` directly.
-- Dedicated CI is expected to materialize assets and run the full marked suite rather than only the smoke test.
-
-The `model_validation` marker is the primary switch separating these heavier checks from the default fast
-feedback path.
+- The `model_validation` marker is the primary switch separating this suite from routine fast tests.
+- Dedicated CI is expected to materialize assets and run the full marked suite.
+- Local narrower runs are useful for debugging, but they do not redefine coverage or authority.
 
 ## Relationship to Scripts
 

@@ -1,6 +1,6 @@
 # ADR-0006: Coverage visibility via support matrix
 
-- Status: Accepted
+- Status: Superseded by ADR-0007
 - Date: 2026-04-14
 
 ## Context

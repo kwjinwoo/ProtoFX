@@ -1,72 +1,51 @@
 # Support Matrix
 
-This document provides an at-a-glance summary of ProtoFX's current validated model coverage and downstream-task
-coverage for repository readers.
+This document provides a representative, agent-oriented snapshot of ProtoFX validation coverage.
 
-The architectural decision behind this visibility surface is recorded in
-`docs/adr/0006-coverage-visibility-support-matrix.md`.
+The architectural decision behind this visibility model is recorded in
+`docs/adr/0007-agent-facing-documentation-entrypoint-and-summary.md`.
 Detailed validation boundaries remain in `docs/dev/MODEL_VALIDATION.md` and
 `docs/dev/DOWNSTREAM_VALIDATION.md`.
 Milestone planning remains in `docs/ROADMAP.md`.
 
 ## Purpose
 
-Repository readers often need a fast answer to two questions:
+Repository readers often need a fast answer to two narrower questions:
 
-1. Which reference models are currently covered?
-2. Which downstream PyTorch tasks are validated for those exact models?
+1. Which coverage anchors exist today?
+2. Where should I look for the exact current status?
 
-This document answers those questions without replacing the authoritative validation suites.
+This document answers those questions without pretending to be an exhaustive live coverage database.
 
-## Source Of Truth
+## How To Read This Document
 
-- `tests/models/manifests/` declares the current reference-model set.
+- This page is intentionally representative rather than exhaustive.
+- Named examples are coverage anchors, not the full supported set.
+- Exact current coverage belongs to manifests and pytest suites, not to this summary page.
+
+## Authoritative Sources
+
+- `tests/models/manifests/` declares the exact current reference-model set.
 - `tests/models/` owns ONNX Runtime parity claims for those reference models.
 - `tests/downstream/` owns downstream PyTorch-tooling compatibility claims.
-- `docs/dev/OPSET_COMPATIBILITY.md` remains the op-level matrix. This document focuses on model and downstream-task
-  coverage.
+- `docs/dev/OPSET_COMPATIBILITY.md` remains the op-level compatibility matrix.
 
 If this document disagrees with those sources, the suites and manifests win.
 
-## Status Vocabulary
+## Representative Snapshot
 
-| Status | Meaning |
-|--------|---------|
-| `Validated` | The exact model-task pair has authoritative pytest coverage today. |
-| `Synthetic only` | The task is validated on representative emitted graphs, but not yet on that exact reference model. |
-| `Not yet model-validated` | No authoritative test exists for that exact model-task pair. Do not infer support. |
-| `Planned` | The roadmap names this area as future work, but it is not current validated coverage. |
-
-## Family Rollup
-
-| Family Group | Current Validated Models | Current Model-Level Downstream Validation | Roadmap Expansion |
-|--------------|--------------------------|-------------------------------------------|-------------------|
-| Smoke / baseline | SqueezeNet (`squeezenet1_0`) | `torch.compile`, PT2E quantization | Retain as the fastest end-to-end gate |
-| Vision | ResNet18, ResNet50, ViT-B/16, EfficientNet-B0, MobileNetV2, MobileNetV3-Small | `torch.compile` on ResNet18 | EfficientNet-B1+, MobileNet-Large, ... |
-| NLP | BERT, RoBERTa, DistilBERT | `torch.compile` on BERT | GPT-2, ... |
-| Multi-modal | None today | None today | CLIP, ... |
-
-## Current Model-By-Task Matrix
-
-| Model | Family Group | ONNX Runtime Parity | `torch.compile` | PT2E Quantization | `torch.export` | Custom FX Pass |
-|-------|--------------|---------------------|-----------------|-------------------|----------------|----------------|
-| SqueezeNet (`squeezenet1_0`) | Smoke / baseline | `Validated` | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` |
-| ResNet18 | Vision | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| ViT-B/16 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| ResNet50 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| EfficientNet-B0 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| MobileNetV2 | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| MobileNetV3-Small | Vision | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| BERT | NLP | `Validated` | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| RoBERTa | NLP | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
-| DistilBERT | NLP | `Validated` | `Synthetic only` | `Synthetic only` | `Synthetic only` | `Synthetic only` |
+| Area | Representative exact coverage today | Representative synthetic-only coverage | Check here for exact current status |
+|------|-------------------------------------|----------------------------------------|-------------------------------------|
+| Smoke / baseline | SqueezeNet model parity, `torch.compile`, and PT2E quantization | `torch.export` and custom FX-pass smoke coverage | `tests/models/manifests/smoke/`, `tests/models/`, `tests/downstream/` |
+| Vision | ResNet18 model parity and `torch.compile`; additional vision parity coverage exists in the current manifests and suites | `torch.export`, PT2E quantization, and custom FX-pass coverage remain representative gates here | `tests/models/manifests/vision/`, `tests/models/`, `tests/downstream/` |
+| NLP | BERT model parity and `torch.compile`; additional NLP parity coverage exists in the current manifests and suites | `torch.export`, PT2E quantization, and custom FX-pass coverage remain representative gates here | `tests/models/manifests/nlp/`, `tests/models/`, `tests/downstream/` |
+| Multi-modal | CLIP model parity | No model-level downstream validation is summarized here | `tests/models/manifests/multimodal/`, `tests/models/`, `tests/downstream/` |
 
 ## Interpretation Rules
 
-- `Validated` means the current repository contains authoritative coverage for that exact pair. It does not imply
-  exhaustive validation across every platform, backend, or exporter configuration.
-- For downstream tasks, supported-environment guarantees remain exactly those defined in
-  `docs/dev/DOWNSTREAM_VALIDATION.md`.
-- `Synthetic only` is intentionally weaker than model-level validation. It means the task is exercised on
-  representative emitted graphs, not on the exact named reference model in this matrix.
-- Planned models do not appear in the matrix until manifests and authoritative tests exist.
+- A named exact model in this document means the repository contains authoritative pytest coverage for that
+  representative case today.
+- `Synthetic only` means the task is exercised on representative emitted graphs, not on the exact named reference
+  model in this summary.
+- Omitted models or tasks are not negative claims. Check the manifests, suites, and roadmap directly.
+- Planned work belongs in `docs/ROADMAP.md`, not in this summary page.
