@@ -26,10 +26,8 @@ Before planning, gather full context:
 - Confirm the request is implementation planning, not architecture selection; if the architecture is still undecided, stop and redirect to Architect
 
 - Explore the codebase with `search` and `read` to understand existing structure, patterns, and conventions
-- Read `docs/dev/ARCHITECTURE.md` first to understand the documentation map and authority order
-- Read any accepted ADRs in `docs/adr/` that constrain the requested work before deriving a plan
-- Review the relevant specification documents in `docs/dev/`, including `docs/dev/IR.md` and `docs/dev/ir/` when IR work is involved
-- Read `docs/WORKBOARD.md` only if the user is using it to express preferred execution order; it is not a source of technical truth
+- Read `docs/README.md` first and use its authority order and question map to load only the accepted decisions and specifications relevant to the request
+- If the user is using a workboard to express preferred execution order, treat it only as optional execution guidance; it is not a source of technical truth
 - Review `.github/copilot-instructions.md` for project conventions
 
 ### 2. Clarify Ambiguities
@@ -62,11 +60,11 @@ Do not produce the plan until all branches in the decision tree are resolved and
 
 After clarifying, assess whether the feature requires documentation updates:
 
-- `docs/adr/` — if the feature changes or introduces an architecture decision
-- `docs/dev/ARCHITECTURE.md` — if component boundaries or data flow change
-- `docs/dev/IR.md` or `docs/dev/ir/` — if IR hubs or detailed specifications change
-- `docs/src/README.md` — if public API surface changes
-- `docs/WORKBOARD.md` — only if the user explicitly wants a maintained execution checklist updated
+- Use `docs/README.md` to identify the concrete documentation targets for the feature
+- Accepted decisions — if the feature changes or introduces an architecture decision
+- Implementation-facing specifications — if component boundaries, data flow, contracts, or validation rules change
+- Public API reference — if the exported API surface changes
+- User-maintained execution checklist — only if the user explicitly wants it updated
 - Inline docstrings — always required for new public functions/classes/methods
 
 Include a docs commit in the plan whenever any of the above apply.
