@@ -109,11 +109,23 @@ Broaden default-domain opset coverage by normalizing representation-only schema 
 
 ---
 
+## Milestone 7 — Decoder-Style Transformer Expansion
+
+Broaden manifest-backed reference-model validation to decoder-style transformer families using the existing
+`torch.export`-based materialization path, then extend representative model-level downstream coverage for validated
+decoder manifests.
+
+| Status | Item |
+|--------|------|
+| 📋 | Add manifest-backed `GPT2Model` reference-model validation through the `torch.export`-based materialization path, scoped to the concrete manifest-declared module class and input signature |
+| 📋 | Add representative model-level downstream validation for the validated `GPT2Model` manifest under the existing downstream-validation boundary after model-validation parity is stable |
+
+---
+
 ## Under Consideration 💡
 
 Ideas not yet scheduled. Discuss with `@Architect` before moving to a milestone.
 
-- GPT-2 reference-model validation: `torch.export.export(strict=False)` currently fails during materialization with `AttributeError: 'FakeTensor' object has no attribute 'get_seq_length'` in `transformers.models.gpt2.GPT2Model.forward`
 - Control-flow op support (If, Loop, Scan)
 - Dynamic shape / symbolic shape propagation
 - Plugin system for 3rd-party op domains

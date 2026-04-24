@@ -53,6 +53,9 @@ The exact current suite inventory may evolve, but the validation boundary does n
 - `tests/models/` carries heavier end-to-end validation concerns, optional dependencies, asset caching, and
   broader family-level coverage.
 - `tests/models/manifests/` declares the exact current reference-model set.
+- A reference-model parity claim is limited to the concrete manifest-declared module class, input signature, and
+  materialization path. It does not imply exhaustive coverage of optional runtime behaviors such as generation
+  helpers or cache APIs unless those are separately declared by manifests and tests.
 - `tests/models/` owns the authoritative ONNX Runtime parity claims for those manifests.
 - Downstream PyTorch-tooling compatibility claims remain outside this suite boundary even when they reuse
   the same manifests or exported artifacts.
