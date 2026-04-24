@@ -104,6 +104,9 @@ def _build_transformers_model(manifest: ModelManifest) -> torch.nn.Module:
     model_cls = getattr(transformers, model_cls_name)
 
     config = config_cls()
+    # Keep export outputs tensor-only for decoder-style models that return cache objects by default.
+    if hasattr(config, "use_cache"):
+        config.use_cache = False
     model: torch.nn.Module = model_cls(config)
     return model.eval()
 

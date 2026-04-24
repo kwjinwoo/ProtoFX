@@ -1,6 +1,6 @@
 family: transformers
 model_name: GPT2
-opset: 17
+opset: 18
 pretrained: false
 seed: 42
 input_shapes:
