@@ -1,0 +1,17 @@
+family: transformers
+model_name: GPT2
+opset: 17
+pretrained: false
+seed: 42
+input_shapes:
+  input_ids: [1, 64]
+input_dtypes:
+  input_ids: int64
+tolerances:
+  rtol: 1.0e-4
+  atol: 1.0e-4
+required_extras:
+  - models
+export_kwargs:
+  config_class: GPT2Config
+  model_class: GPT2Model

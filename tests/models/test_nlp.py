@@ -1,4 +1,4 @@
-"""NLP model family parity tests (BERT, RoBERTa, DistilBERT)."""
+"""NLP model family parity tests (BERT, RoBERTa, DistilBERT, GPT2)."""
 
 from __future__ import annotations
 
@@ -48,6 +48,20 @@ class TestDistilBERTParity:
     def test_distilbert_parity(self, tmp_path: Path) -> None:
         """DistilBERT manifest must produce numerically close ORT and ProtoFX outputs."""
         manifest = load_manifest(_MANIFESTS_DIR / "nlp" / "distilbert.yaml")
+        try:
+            onnx_path = materialize(manifest, cache_root=tmp_path)
+        except ImportError as exc:
+            pytest.skip(f"Optional dependency unavailable: {exc}")
+        assert_model_parity(onnx_path, manifest)
+
+
+@pytest.mark.model_validation
+class TestGPT2Parity:
+    """End-to-end ORT vs ProtoFX parity for GPT2Model."""
+
+    def test_gpt2_parity(self, tmp_path: Path) -> None:
+        """GPT2 manifest must produce numerically close ORT and ProtoFX outputs."""
+        manifest = load_manifest(_MANIFESTS_DIR / "nlp" / "gpt2.yaml")
         try:
             onnx_path = materialize(manifest, cache_root=tmp_path)
         except ImportError as exc:
