@@ -24,7 +24,7 @@ Architect-only workflow for recording agreed follow-up work in the project's mil
 
 ## Procedure
 
-1. Read `docs/README.md` and resolve the current milestone planning document.
+1. Read `docs/README.md`, resolve the current milestone planning document, and confirm that any `docs/status/` pages are only derived visibility.
 2. Confirm the architecture agreement in normalized form, including whether ADR work was required or skipped.
 3. Decide the operation: add a top-level milestone, add an item to an existing milestone, move an item, update an item status, or mark work superseded.
 4. Read the current planning document and check for duplicates, status-vocabulary mismatches, or the wrong insertion point.
@@ -34,6 +34,7 @@ Architect-only workflow for recording agreed follow-up work in the project's mil
 ## Notes
 
 - Today the planning document resolved by `docs/README.md` is `docs/ROADMAP.md`.
+- `docs/status/` is never a substitute for the milestone planning document.
 - If the repository later renames that planning surface, update this skill and the Architect agent together.
 
 ## Reference

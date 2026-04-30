@@ -29,6 +29,7 @@ into a workboard or commit-level execution plan.
 ## Editing Rules
 
 - Resolve the planning document path via `docs/README.md`. Today that path is `docs/ROADMAP.md`.
+- Do not use `docs/status/` as planning authority; those pages are derived snapshots only.
 - Preserve the document's existing status vocabulary, heading structure, and concise milestone-item wording.
 - Keep milestone items outcome-oriented. Do not expand them into commit lists, task checkboxes, or user-specific notes.
 - Check for near-duplicate items before inserting new text.
