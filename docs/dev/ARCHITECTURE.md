@@ -9,8 +9,8 @@ ONNX ModelProto ──▶ Importer ──▶ Thin Normalized IR ──▶ Valida
 ```
 
 Accepted architecture decisions are recorded in `docs/adr/`.
-Detailed subsystem specifications live under `docs/dev/`.
-Public API reference lives under `docs/src/`.
+Detailed subsystem specifications and public API reference live under `docs/dev/`.
+Derived status summaries live under `docs/status/`.
 For agent-oriented navigation across the documentation tree, start at `docs/README.md`.
 Milestone 1 IR contract reconciliation is recorded in `docs/adr/0003-milestone-1-ir-contract-reconciliation.md`.
 
@@ -23,8 +23,8 @@ not collapse into a single document.
 |---------------|---------|-----------|
 | `docs/README.md` | Agent-facing navigation and document selection | Navigation only; not an authority surface |
 | `docs/adr/` | Records accepted architecture decisions and their rationale | Source of truth for structural decisions |
-| `docs/dev/` | Records technical specifications derived from accepted decisions | Source of truth for implementation-facing contracts |
-| `docs/src/` | Records public API reference and module-level usage notes | Reference surface for exported APIs |
+| `docs/dev/` | Records technical specifications and public API reference derived from accepted decisions | Source of truth for implementation-facing contracts |
+| `docs/status/` | Records derived status snapshots and coverage summaries | Derived visibility only; not a normative contract |
 | `docs/ROADMAP.md` | Records milestones, priorities, and project-level sequencing | Source of truth for planned project scope |
 | Temporary workboard (when present) | User-maintained execution checklist for directing agents | Convenience only; not authoritative for architecture |
 
@@ -126,7 +126,7 @@ reference-model validation.
 
 See `docs/dev/MODEL_VALIDATION.md` for the detailed reference-model validation structure and asset policy.
 See `docs/dev/DOWNSTREAM_VALIDATION.md` for the detailed downstream-tooling validation contract.
-`docs/dev/SUPPORT_MATRIX.md` provides a derived representative summary of current validation anchors.
+`docs/status/SUPPORT_MATRIX.md` provides a derived representative summary of current validation anchors.
 That summary is subordinate to the authoritative pytest suites and manifests above.
 
 ## Architectural Boundary
@@ -161,6 +161,6 @@ The documentation tree is intentionally split by authority and purpose.
 
 - Start at `docs/README.md` to choose the right document for the current question.
 - Use `docs/adr/` for accepted decisions and rationale.
-- Use `docs/dev/` for implementation-facing contracts and boundaries.
-- Use `docs/src/` for public API reference.
+- Use `docs/dev/` for implementation-facing contracts, boundaries, and public API reference.
+- Use `docs/status/` for derived coverage and compatibility summaries.
 - Use `docs/ROADMAP.md` for planned scope rather than current guarantees.

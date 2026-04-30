@@ -7,7 +7,7 @@
 
 ProtoFX already exposes multiple authoritative validation surfaces.
 
-- `docs/dev/OPSET_COMPATIBILITY.md` summarizes op-level registry coverage.
+- `docs/status/OPSET_COMPATIBILITY.md` summarizes op-level registry coverage.
 - `tests/models/manifests/` and `tests/models/` define and validate current reference-model parity coverage.
 - `tests/downstream/` defines current downstream PyTorch-tooling compatibility coverage.
 
@@ -27,7 +27,7 @@ existing validation authority model.
 
 ProtoFX adopts a support-matrix visibility surface rather than a separate `modelzoo` subsystem.
 
-- `docs/dev/SUPPORT_MATRIX.md` is the detailed repository-facing summary of current validated model coverage and
+- `docs/status/SUPPORT_MATRIX.md` is the detailed repository-facing summary of current validated model coverage and
   downstream-task coverage.
 - The authoritative sources of truth remain `tests/models/manifests/`, `tests/models/`, and `tests/downstream/`.
 - The support matrix is a derived view for discoverability. It does not own pass/fail status, asset policy, or
@@ -64,7 +64,7 @@ ProtoFX adopts a support-matrix visibility surface rather than a separate `model
 ## Derived Specifications
 
 - `docs/dev/ARCHITECTURE.md`
-- `docs/dev/SUPPORT_MATRIX.md`
+- `docs/status/SUPPORT_MATRIX.md`
 - `docs/dev/MODEL_VALIDATION.md`
 - `docs/dev/DOWNSTREAM_VALIDATION.md`
 - `docs/ROADMAP.md`

@@ -3,7 +3,7 @@
 This document tracks the planned development milestones for ProtoFX.
 Accepted architecture decisions are recorded in `docs/adr/`.
 Development specifications derived from those decisions live in `docs/dev/`.
-Current validated model and downstream-task visibility is summarized in `docs/dev/SUPPORT_MATRIX.md`.
+Current validated model and downstream-task visibility is summarized in `docs/status/SUPPORT_MATRIX.md`.
 
 > **Status key**: ✅ Done · 🚧 In Progress · 📋 Planned · 💡 Under Consideration
 
@@ -55,7 +55,7 @@ End-to-end correctness verification against reference ONNX models.
 The accepted reference-model asset policy for this milestone is recorded in
 `docs/adr/0004-externalized-reference-model-validation-assets.md`.
 Detailed model-validation structure is documented in `docs/dev/MODEL_VALIDATION.md`.
-The generated opset compatibility matrix lives in `docs/dev/OPSET_COMPATIBILITY.md`.
+The generated opset compatibility matrix lives in `docs/status/OPSET_COMPATIBILITY.md`.
 
 | Status | Item |
 |--------|------|

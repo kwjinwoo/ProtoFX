@@ -77,7 +77,7 @@ src/protofx/
 | Vision | ResNet18, ViT-B/16 | `torch.compile` on ResNet18 |
 | NLP | BERT | `torch.compile` on BERT |
 
-For the full model-by-task matrix and status definitions, see [docs/dev/SUPPORT_MATRIX.md](docs/dev/SUPPORT_MATRIX.md).
+For the full model-by-task matrix and status definitions, see [docs/status/SUPPORT_MATRIX.md](docs/status/SUPPORT_MATRIX.md).
 
 ## Development
 
@@ -110,7 +110,7 @@ Each handler receives the IR `node`, a list of resolved FX `args`, the `fx_graph
 root `module`. It returns a list of `torch.fx.Node` — one per IR output.
 
 Handlers live in `src/protofx/ops/` and are tested with minimal ONNX fixtures in `tests/ops/`.
-See [docs/src/ops.md](docs/src/ops.md) for the full registry API reference.
+See [docs/dev/PUBLIC_API.md](docs/dev/PUBLIC_API.md) for the full public API and registry reference.
 
 ## Roadmap
 

@@ -17,7 +17,7 @@ correctly on representative end-to-end architectures.
 
 These two validation layers serve different purposes and should not be collapsed into the same asset model.
 
-`docs/dev/SUPPORT_MATRIX.md` may summarize the current exact model set for repository readers, but that visibility
+`docs/status/SUPPORT_MATRIX.md` may summarize the current exact model set for repository readers, but that visibility
 surface is derived from manifests and pytest coverage rather than replacing them.
 
 ## Validation Layers
@@ -60,7 +60,7 @@ The exact current suite inventory may evolve, but the validation boundary does n
 - Downstream PyTorch-tooling compatibility claims remain outside this suite boundary even when they reuse
   the same manifests or exported artifacts.
 - Helper scripts may assist materialization, but they do not replace the suite boundary above.
-- `docs/dev/SUPPORT_MATRIX.md` may present a representative summary, but that summary does not own the underlying
+- `docs/status/SUPPORT_MATRIX.md` may present a representative summary, but that summary does not own the underlying
   parity claim.
 
 ## Manifest Contract

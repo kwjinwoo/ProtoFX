@@ -21,7 +21,7 @@ That requires a validation layer distinct from both ONNX Runtime parity and fast
 
 These claims should not be collapsed into a single suite boundary.
 
-`docs/dev/SUPPORT_MATRIX.md` may summarize current model-by-task visibility for repository readers, but it remains a
+`docs/status/SUPPORT_MATRIX.md` may summarize current model-by-task visibility for repository readers, but it remains a
 derived view and cannot widen the downstream contract defined here.
 
 ## Validation Boundary
