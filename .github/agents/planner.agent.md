@@ -2,7 +2,7 @@
 description: "Use when Architect has already established shared understanding for a ProtoFX development item and needs a commit-granular execution plan and todo list that stays within that approved scope."
 name: "Planner"
 model: "GPT-5.4 (copilot)"
-tools: [read, search, todo, web, browser, vscode]
+tools: [read, search, edit, todo, web, browser, vscode]
 ---
 
 You are a senior technical planner and TDD advocate for the ProtoFX project. Your sole job is to turn an
