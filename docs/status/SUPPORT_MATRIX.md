@@ -39,7 +39,7 @@ families and downstream-tooling gates.
 |------|-------------------------------------|----------------------------------------|-------------------------------------|
 | Smoke / baseline | SqueezeNet model parity, `torch.compile`, and PT2E quantization | `torch.export` and custom FX-pass smoke coverage | `tests/models/manifests/smoke/`, `tests/models/`, `tests/downstream/` |
 | Vision | ResNet18 model parity and `torch.compile`; additional vision parity coverage exists in the current manifests and suites | `torch.export`, PT2E quantization, and custom FX-pass coverage remain representative gates here | `tests/models/manifests/vision/`, `tests/models/`, `tests/downstream/` |
-| NLP | BERT model parity and `torch.compile`; additional NLP parity coverage exists in the current manifests and suites | `torch.export`, PT2E quantization, and custom FX-pass coverage remain representative gates here | `tests/models/manifests/nlp/`, `tests/models/`, `tests/downstream/` |
+| NLP | BERT and GPT2Model model parity and `torch.compile`; additional NLP parity coverage exists in the current manifests and suites | `torch.export`, PT2E quantization, and custom FX-pass coverage remain representative gates here | `tests/models/manifests/nlp/`, `tests/models/`, `tests/downstream/` |
 | Multi-modal | CLIP model parity | No model-level downstream validation is summarized here | `tests/models/manifests/multimodal/`, `tests/models/`, `tests/downstream/` |
 
 <!-- section:source-of-truth -->

@@ -83,7 +83,7 @@ The following are not part of the current guarantee:
 The current `torch.compile` representative scope covers both small and model-level cases.
 
 - fast compile smoke coverage on representative emitted graphs under `tests/downstream/`
-- manifest-backed end-to-end compile validation for selected models such as SqueezeNet, ResNet18, and BERT
+- manifest-backed end-to-end compile validation for selected models such as SqueezeNet, ResNet18, BERT, and GPT2Model
 
 ### PT2E Quantization
 
