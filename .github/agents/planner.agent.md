@@ -24,6 +24,26 @@ file paths, commit messages, code identifiers) remain in English.
 - ALWAYS preserve the required route `Architect -> Planner -> Architect`
 - ALWAYS return scope-defining questions to Architect instead of expanding the plan yourself
 
+## Session Artifact Writing Contract
+
+- Write session artifacts with direct `edit`-based file updates at the exact artifact path.
+- Do not use shell redirection, temporary files, or repo-local notes for artifact persistence.
+- If direct artifact writing is blocked by runtime limits, return the exact JSON payload, target path, and a
+  machine-readable failure reason to Architect.
+
+Use this fallback structure when write attempts fail:
+
+```json
+{
+  "artifact_path": "<absolute path>",
+  "payload": <exact JSON object you attempted to write>,
+  "write_failure": {
+    "code": "artifact_write_blocked",
+    "reason": "<machine-readable runtime limitation>"
+  }
+}
+```
+
 ## Workflow
 
 ### 1. Understand the Request
