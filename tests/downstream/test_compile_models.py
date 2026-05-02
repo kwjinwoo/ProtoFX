@@ -128,3 +128,15 @@ class TestCompileBERT:
         manifest = load_manifest(_MANIFESTS_DIR / "nlp" / "bert.yaml")
         onnx_path = _materialize_or_skip(manifest, tmp_path)
         _assert_compile_model_parity(onnx_path, manifest)
+
+
+@pytest.mark.downstream_validation
+@pytest.mark.model_validation
+class TestCompileGPT2:
+    """torch.compile parity for GPT2."""
+
+    def test_gpt2_compile_parity(self, tmp_path: Path) -> None:
+        """Compiled GPT2 must match eager output."""
+        manifest = load_manifest(_MANIFESTS_DIR / "nlp" / "gpt2.yaml")
+        onnx_path = _materialize_or_skip(manifest, tmp_path)
+        _assert_compile_model_parity(onnx_path, manifest)
