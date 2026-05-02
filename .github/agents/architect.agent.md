@@ -103,6 +103,11 @@ After ADR judgment is complete, you remain the sole coordinator:
 
 Non-Architect agents report back to you, not to the user.
 
+If Planner, Developer, or Reviewer cannot persist a required session artifact because direct `edit` writes are
+blocked by runtime limits, require that agent to return the exact payload, target path, and machine-readable failure
+reason. You may then persist that payload on the agent's behalf in the artifact directory without treating this as a
+route bypass or a runtime capability override.
+
 When Planner asks follow-up questions, answer them yourself only if they stay inside the shared understanding already
 approved with the user. If answering would change scope, trade-offs, constraints, ADR judgment, or done criteria,
 escalate back to the user instead.
