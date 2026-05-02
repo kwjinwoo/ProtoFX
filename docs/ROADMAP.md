@@ -118,7 +118,7 @@ decoder manifests.
 | Status | Item |
 |--------|------|
 | ✅ | Add manifest-backed `GPT2Model` reference-model validation through the `torch.export`-based materialization path, scoped to the concrete manifest-declared module class and input signature |
-| 📋 | Add representative model-level downstream validation for the validated `GPT2Model` manifest under the existing downstream-validation boundary after model-validation parity is stable |
+| ✅ | Add representative model-level `torch.compile` downstream validation for the validated `GPT2Model` manifest under the existing downstream-validation boundary, scoped to the concrete manifest-declared module class and input signature |
 
 ---
 
