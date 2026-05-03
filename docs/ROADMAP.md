@@ -122,11 +122,38 @@ decoder manifests.
 
 ---
 
+## Milestone 8 — Control-Flow Foundation and If MVP
+
+Realize the deferred control-flow architecture by defining the subgraph import and emission boundary, then prove the
+path end-to-end with `If`.
+
+| Status | Item |
+|--------|------|
+| 📋 | Record the accepted control-flow subgraph representation and validation boundary in an ADR and derived `docs/dev/` specifications |
+| 📋 | Extend the importer to normalize and import ONNX `GRAPH` / `GRAPHS` attributes as child subgraphs |
+| 📋 | Extend IR validation to preserve and validate child-graph ownership, branch signatures, and nested graph invariants |
+| 📋 | Add end-to-end `If` support from ONNX import through FX emission |
+| 📋 | Add importer, parity, and downstream validation coverage for `If`, including representative `torch.compile` smoke coverage |
+
+---
+
+## Milestone 9 — Loop and Scan Expansion
+
+Build on the accepted control-flow subgraph contract to add iterative control-flow ops with explicit loop-state and
+scanned-output coverage.
+
+| Status | Item |
+|--------|------|
+| 📋 | Add `Loop` support, including loop-carried state import and emission semantics under the accepted control-flow contract |
+| 📋 | Add `Scan` support, including scanned-output import and emission semantics under the accepted control-flow contract |
+| 📋 | Add importer, parity, and downstream validation coverage for `Loop` and `Scan` |
+
+---
+
 ## Under Consideration 💡
 
 Ideas not yet scheduled. Discuss with `@Architect` before moving to a milestone.
 
-- Control-flow op support (If, Loop, Scan)
 - Dynamic shape / symbolic shape propagation
 - Plugin system for 3rd-party op domains
 - ONNX model surgery utilities (graph editing before conversion)
