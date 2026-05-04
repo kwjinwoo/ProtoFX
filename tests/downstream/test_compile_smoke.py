@@ -90,6 +90,32 @@ def _make_multi_op_model() -> helper.ModelProto:
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
 
 
+def _make_if_model() -> helper.ModelProto:
+    """Build ONNX model: (cond, X) → If(then=Identity, else=Neg) → Y."""
+    cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2])
+    y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2])
+
+    then_node = helper.make_node("Identity", ["X"], ["then_out"])
+    then_graph = helper.make_graph(
+        [then_node],
+        "then_branch",
+        [],
+        [helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [2])],
+    )
+    else_node = helper.make_node("Neg", ["X"], ["else_out"])
+    else_graph = helper.make_graph(
+        [else_node],
+        "else_branch",
+        [],
+        [helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [2])],
+    )
+
+    if_node = helper.make_node("If", ["cond"], ["Y"], then_branch=then_graph, else_branch=else_graph)
+    graph = helper.make_graph([if_node], "if_graph", [cond, x], [y])
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -161,3 +187,16 @@ class TestCompileSmokeMultiOp:
         rng = np.random.default_rng(42)
         x = rng.standard_normal((2, 4)).astype(np.float32)
         assert_compile_parity(_make_multi_op_model(), {"X": x})
+
+
+class TestCompileSmokeIf:
+    """torch.compile parity for If graph."""
+
+    @pytest.mark.parametrize("condition", [True, False])
+    def test_compile_parity(self, condition: bool) -> None:
+        """Compiled If graph must match eager output for both branches."""
+        x = np.array([1.0, -2.0], dtype=np.float32)
+        assert_compile_parity(
+            _make_if_model(),
+            {"cond": np.asarray(condition, dtype=np.bool_), "X": x},
+        )
