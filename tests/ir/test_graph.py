@@ -1095,6 +1095,23 @@ class TestGraphControlFlowValidation:
         then_output.tensor_type = TensorType(dtype=None, shape=(2,))
         g.validate()
 
+    def test_validate_skips_shape_mismatch_when_dim_is_unknown(self) -> None:
+        g, if_node = self._make_if_graph()
+        then_output = if_node.subgraphs["then_branch"].outputs[0]
+        else_output = if_node.subgraphs["else_branch"].outputs[0]
+        node_output = if_node.outputs[0]
+        then_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(None, 2))
+        else_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(1, 2))
+        node_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(None, 2))
+        g.validate()
+
+    def test_validate_fails_shape_mismatch_when_provable(self) -> None:
+        g, if_node = self._make_if_graph()
+        else_output = if_node.subgraphs["else_branch"].outputs[0]
+        else_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(2, 3))
+        with pytest.raises(ValueError, match="shape mismatch"):
+            g.validate()
+
     def test_topological_sort_is_graph_local_with_children(self) -> None:
         g, if_node = self._make_if_graph()
         ordered = g.topological_sort()

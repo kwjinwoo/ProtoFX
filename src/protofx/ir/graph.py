@@ -509,6 +509,29 @@ class Graph:
                     raise ValueError(msg)
                 child.validate()
 
+    @staticmethod
+    def _shapes_provably_mismatch(
+        lhs: tuple[int | str | None, ...] | None,
+        rhs: tuple[int | str | None, ...] | None,
+    ) -> bool:
+        """Return whether two shapes have a provable mismatch.
+
+        Args:
+            lhs: First shape metadata.
+            rhs: Second shape metadata.
+
+        Returns:
+            ``True`` when available metadata is sufficient to prove a mismatch.
+        """
+        if lhs is None or rhs is None:
+            return False
+        if len(lhs) != len(rhs):
+            return True
+        return any(
+            left_dim is not None and right_dim is not None and left_dim != right_dim
+            for left_dim, right_dim in zip(lhs, rhs, strict=True)
+        )
+
     def _validate_if_nodes(self) -> None:
         """Validate ``If`` branch contracts on this graph only."""
         for node in self.nodes:
@@ -549,12 +572,12 @@ class Graph:
                 then_shape = then_out.tensor_type.shape
                 else_shape = else_out.tensor_type.shape
                 node_shape = node_out.tensor_type.shape
-                if then_shape is not None and else_shape is not None and then_shape != else_shape:
+                if self._shapes_provably_mismatch(then_shape, else_shape):
                     msg = f"node {node.id!r} (If) output {slot}: shape mismatch across branches"
                     raise ValueError(msg)
-                if node_shape is not None and then_shape is not None and node_shape != then_shape:
+                if self._shapes_provably_mismatch(node_shape, then_shape):
                     msg = f"node {node.id!r} (If) output {slot}: shape mismatch with then_branch"
                     raise ValueError(msg)
-                if node_shape is not None and else_shape is not None and node_shape != else_shape:
+                if self._shapes_provably_mismatch(node_shape, else_shape):
                     msg = f"node {node.id!r} (If) output {slot}: shape mismatch with else_branch"
                     raise ValueError(msg)

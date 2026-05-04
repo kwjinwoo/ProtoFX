@@ -370,6 +370,86 @@ def _normalize_legacy_axes_input(
     inputs.append(axes_value)
 
 
+def _reorder_child_capture_inputs(
+    child_graph: Graph,
+    *,
+    child_capture_names: list[str],
+    normalized_capture_order: list[str],
+) -> None:
+    """Apply normalized capture input ordering to a child graph.
+
+    Args:
+        child_graph: Imported child graph to reorder.
+        child_capture_names: Capture names materialized in this child graph.
+        normalized_capture_order: Shared capture ordering for both If branches.
+    """
+    if not child_capture_names:
+        return
+
+    capture_name_set = set(child_capture_names)
+    capture_values_by_name = {
+        value.name: value for value in child_graph.inputs if value.name in capture_name_set and value.name is not None
+    }
+    if set(capture_values_by_name) != capture_name_set:
+        missing = sorted(capture_name_set - set(capture_values_by_name))
+        msg = f"If node {child_graph.name or 'If'!r}: unresolved capture inputs in child graph: {missing!r}"
+        raise ValueError(msg)
+
+    non_capture_inputs = [value for value in child_graph.inputs if value.name not in capture_name_set]
+    ordered_capture_inputs = [
+        capture_values_by_name[name] for name in normalized_capture_order if name in capture_name_set
+    ]
+    child_graph.inputs = non_capture_inputs + ordered_capture_inputs
+
+
+def _normalize_if_capture_order(
+    node_proto: onnx.NodeProto,
+    value_registry: dict[str, Value],
+    branch_captures: dict[str, tuple[Graph, list[str]]],
+) -> list[str]:
+    """Normalize If branch captures to a stable shared order.
+
+    Args:
+        node_proto: Source If node.
+        value_registry: Parent graph name-to-value registry.
+        branch_captures: Per-branch imported graph and capture names.
+
+    Returns:
+        Shared capture ordering to append to If node inputs.
+    """
+    then_entry = branch_captures.get("then_branch")
+    else_entry = branch_captures.get("else_branch")
+    if then_entry is None or else_entry is None:
+        return []
+
+    then_graph, then_captures = then_entry
+    else_graph, else_captures = else_entry
+    then_capture_set = set(then_captures)
+    else_capture_set = set(else_captures)
+    if then_capture_set != else_capture_set:
+        msg = f"If node {node_proto.name or node_proto.op_type!r}: inconsistent branch captures"
+        raise ValueError(msg)
+
+    normalized_capture_order = [name for name in value_registry if name in then_capture_set]
+    unresolved_capture_names = sorted(then_capture_set - set(normalized_capture_order))
+    if unresolved_capture_names:
+        unresolved_name = unresolved_capture_names[0]
+        msg = f"If node {node_proto.name or node_proto.op_type!r}: unresolved capture {unresolved_name!r}"
+        raise ValueError(msg)
+
+    _reorder_child_capture_inputs(
+        then_graph,
+        child_capture_names=then_captures,
+        normalized_capture_order=normalized_capture_order,
+    )
+    _reorder_child_capture_inputs(
+        else_graph,
+        child_capture_names=else_captures,
+        normalized_capture_order=normalized_capture_order,
+    )
+    return normalized_capture_order
+
+
 def _import_nodes(
     graph: Graph,
     graph_proto: onnx.GraphProto,
@@ -434,7 +514,7 @@ def _import_nodes(
         # Normalize attributes
         attributes: dict[str, AttributeValue] = {}
         subgraphs: dict[str, Graph | tuple[Graph, ...]] = {}
-        if_capture_order: list[str] | None = None
+        if_branch_captures: dict[str, tuple[Graph, list[str]]] = {}
         for attr in node_proto.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
                 child_graph, child_captures = _import_graph_proto(
@@ -444,12 +524,8 @@ def _import_nodes(
                     parent_value_registry=value_registry,
                 )
                 subgraphs[attr.name] = child_graph
-                if node_proto.op_type == "If":
-                    if if_capture_order is None:
-                        if_capture_order = child_captures
-                    elif child_captures != if_capture_order:
-                        msg = f"If node {node_proto.name or node_proto.op_type!r}: inconsistent branch captures"
-                        raise ValueError(msg)
+                if node_proto.op_type == "If" and attr.name in {"then_branch", "else_branch"}:
+                    if_branch_captures[attr.name] = (child_graph, child_captures)
                 continue
             if attr.type == onnx.AttributeProto.GRAPHS:
                 child_graphs: list[Graph] = []
@@ -465,11 +541,9 @@ def _import_nodes(
                 continue
             attributes[attr.name] = _normalize_attribute(attr)
 
-        if node_proto.op_type == "If" and if_capture_order:
-            for capture_name in if_capture_order:
-                if capture_name not in value_registry:
-                    msg = f"If node {node_proto.name or node_proto.op_type!r}: unresolved capture {capture_name!r}"
-                    raise ValueError(msg)
+        if node_proto.op_type == "If":
+            normalized_capture_order = _normalize_if_capture_order(node_proto, value_registry, if_branch_captures)
+            for capture_name in normalized_capture_order:
                 inputs.append(value_registry[capture_name])
 
         # Normalize Conv/ConvTranspose auto_pad to explicit pads

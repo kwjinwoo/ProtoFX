@@ -946,6 +946,39 @@ class TestControlFlowImport:
         assert [inp.name for inp in else_branch.inputs] == ["x"]
         assert [inp.name for inp in if_node.inputs] == ["cond", "x"]
 
+    def test_if_capture_normalization_handles_reordered_branch_use(self) -> None:
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        then_node = helper.make_node("Add", ["x", "b"], ["then_out"])
+        then_graph = helper.make_graph(
+            [then_node],
+            "then_branch",
+            [],
+            [helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [2])],
+        )
+        else_node = helper.make_node("Add", ["b", "x"], ["else_out"])
+        else_graph = helper.make_graph(
+            [else_node],
+            "else_branch",
+            [],
+            [helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [2])],
+        )
+
+        if_node = helper.make_node("If", ["cond"], ["y"], then_branch=then_graph, else_branch=else_graph)
+        graph = helper.make_graph([if_node], "if_graph", [cond, x, b], [y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+        imported = import_model(model)
+        imported_if = imported.nodes[0]
+        imported_then = imported_if.subgraphs["then_branch"]
+        imported_else = imported_if.subgraphs["else_branch"]
+
+        assert [inp.name for inp in imported_if.inputs] == ["cond", "x", "b"]
+        assert [inp.name for inp in imported_then.inputs] == ["x", "b"]
+        assert [inp.name for inp in imported_else.inputs] == ["x", "b"]
+
     def test_if_malformed_capture_interface_raises(self) -> None:
         cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
         x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
