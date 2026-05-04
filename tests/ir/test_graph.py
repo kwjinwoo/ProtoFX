@@ -1025,3 +1025,77 @@ class TestGraphAddInitializer:
             output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 4))],
         )
         assert w.users[0] == (node, 1)
+
+
+class TestGraphControlFlowValidation:
+    """Tests for child subgraph ownership and recursive If validation."""
+
+    def _make_if_graph(self) -> tuple[Graph, object]:
+        g = Graph(name="main")
+        cond = g.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=()), name="cond")
+        capture = g.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="x")
+
+        then_graph = Graph(name="then", parent=g)
+        then_x = then_graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="x")
+        then_identity = then_graph.make_node(
+            op_type="Identity",
+            inputs=[then_x],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        then_graph.set_graph_outputs([then_identity.outputs[0]])
+
+        else_graph = Graph(name="else", parent=g)
+        else_x = else_graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="x")
+        else_identity = else_graph.make_node(
+            op_type="Identity",
+            inputs=[else_x],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        else_graph.set_graph_outputs([else_identity.outputs[0]])
+
+        if_node = g.make_node(
+            op_type="If",
+            inputs=[cond, capture],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+            attributes={"keepdims": 0},
+            subgraphs={"then_branch": then_graph, "else_branch": else_graph},
+        )
+        g.set_graph_outputs([if_node.outputs[0]])
+        return g, if_node
+
+    def test_recursive_validate_checks_child_graphs(self) -> None:
+        g, _ = self._make_if_graph()
+        g.validate()
+
+    def test_validate_fails_for_wrong_child_parent(self) -> None:
+        g, if_node = self._make_if_graph()
+        child = if_node.subgraphs["then_branch"]
+        child.parent = None
+        with pytest.raises(ValueError, match="parent"):
+            g.validate()
+
+    def test_validate_fails_for_if_branch_arity_mismatch(self) -> None:
+        g, if_node = self._make_if_graph()
+        else_branch = if_node.subgraphs["else_branch"]
+        else_branch.set_graph_outputs([])
+        with pytest.raises(ValueError, match="arity"):
+            g.validate()
+
+    def test_validate_checks_dtype_when_metadata_available(self) -> None:
+        g, if_node = self._make_if_graph()
+        else_branch = if_node.subgraphs["else_branch"]
+        else_branch_output = else_branch.outputs[0]
+        else_branch_output.tensor_type = TensorType(dtype=DType.INT64, shape=(2,))
+        with pytest.raises(ValueError, match="dtype"):
+            g.validate()
+
+    def test_validate_skips_dtype_when_metadata_unknown(self) -> None:
+        g, if_node = self._make_if_graph()
+        then_output = if_node.subgraphs["then_branch"].outputs[0]
+        then_output.tensor_type = TensorType(dtype=None, shape=(2,))
+        g.validate()
+
+    def test_topological_sort_is_graph_local_with_children(self) -> None:
+        g, if_node = self._make_if_graph()
+        ordered = g.topological_sort()
+        assert ordered == [if_node]

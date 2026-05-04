@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from protofx.ir.node import AttributeValue, Node
+from protofx.ir.node import AttributeValue, Node, SubgraphValue
 from protofx.ir.tensor_type import TensorType
 from protofx.ir.value import Value, ValueKind
 
@@ -209,6 +209,7 @@ class Graph:
         domain: str = "",
         opset_version: int | None = None,
         attributes: dict[str, AttributeValue] | None = None,
+        subgraphs: dict[str, SubgraphValue] | None = None,
         name: str | None = None,
         output_names: list[str | None] | None = None,
     ) -> Node:
@@ -221,6 +222,7 @@ class Graph:
             domain: ONNX operator domain. Defaults to ``""``.
             opset_version: ONNX opset version, or ``None``.
             attributes: Normalized attribute dict, or ``None`` for empty.
+            subgraphs: Structural child subgraphs keyed by attribute name.
             name: Optional ONNX node name.
             output_names: Optional list of ONNX names for output Values.
 
@@ -233,6 +235,7 @@ class Graph:
             domain=domain,
             opset_version=opset_version,
             attributes=attributes if attributes is not None else {},
+            subgraphs=subgraphs if subgraphs is not None else {},
             name=name,
         )
         node._inputs = list(inputs)
@@ -416,6 +419,12 @@ class Graph:
         Raises:
             ValueError: If any invariant is violated.
         """
+        self._validate_graph_local_invariants()
+        self._validate_child_subgraphs()
+        self._validate_if_nodes()
+
+    def _validate_graph_local_invariants(self) -> None:
+        """Validate graph-local invariants without traversing child graphs."""
         _no_producer_kinds = {
             ValueKind.GRAPH_INPUT,
             ValueKind.SENTINEL,
@@ -480,3 +489,72 @@ class Graph:
             if value.kind == ValueKind.INITIALIZER and id(value) not in initializers_set:
                 msg = f"value {value.id!r} (kind=INITIALIZER): initializer not in graph.initializers"
                 raise ValueError(msg)
+
+    def _iter_child_graphs(self, node: Node) -> list[Graph]:
+        """Return all child graphs attached to a node."""
+        children: list[Graph] = []
+        for subgraph_value in node.subgraphs.values():
+            if isinstance(subgraph_value, Graph):
+                children.append(subgraph_value)
+            else:
+                children.extend(list(subgraph_value))
+        return children
+
+    def _validate_child_subgraphs(self) -> None:
+        """Validate child graph parent linkage and recurse into each child graph."""
+        for node in self.nodes:
+            for child in self._iter_child_graphs(node):
+                if child.parent is not self:
+                    msg = f"node {node.id!r}: child graph {child.name!r} has invalid parent linkage"
+                    raise ValueError(msg)
+                child.validate()
+
+    def _validate_if_nodes(self) -> None:
+        """Validate ``If`` branch contracts on this graph only."""
+        for node in self.nodes:
+            if node.op_type != "If":
+                continue
+
+            then_branch = node.subgraphs.get("then_branch")
+            else_branch = node.subgraphs.get("else_branch")
+            if not isinstance(then_branch, Graph) or not isinstance(else_branch, Graph):
+                msg = f"node {node.id!r} (If): missing required then_branch/else_branch subgraphs"
+                raise ValueError(msg)
+
+            then_outputs = then_branch.outputs
+            else_outputs = else_branch.outputs
+            if len(then_outputs) != len(else_outputs) or len(then_outputs) != len(node.outputs):
+                msg = (
+                    f"node {node.id!r} (If): branch output arity mismatch "
+                    f"(then={len(then_outputs)}, else={len(else_outputs)}, node={len(node.outputs)})"
+                )
+                raise ValueError(msg)
+
+            for slot, (then_out, else_out, node_out) in enumerate(
+                zip(then_outputs, else_outputs, node.outputs, strict=True)
+            ):
+                then_dtype = then_out.tensor_type.dtype
+                else_dtype = else_out.tensor_type.dtype
+                node_dtype = node_out.tensor_type.dtype
+                if then_dtype is not None and else_dtype is not None and then_dtype != else_dtype:
+                    msg = f"node {node.id!r} (If) output {slot}: dtype mismatch across branches"
+                    raise ValueError(msg)
+                if node_dtype is not None and then_dtype is not None and node_dtype != then_dtype:
+                    msg = f"node {node.id!r} (If) output {slot}: dtype mismatch with then_branch"
+                    raise ValueError(msg)
+                if node_dtype is not None and else_dtype is not None and node_dtype != else_dtype:
+                    msg = f"node {node.id!r} (If) output {slot}: dtype mismatch with else_branch"
+                    raise ValueError(msg)
+
+                then_shape = then_out.tensor_type.shape
+                else_shape = else_out.tensor_type.shape
+                node_shape = node_out.tensor_type.shape
+                if then_shape is not None and else_shape is not None and then_shape != else_shape:
+                    msg = f"node {node.id!r} (If) output {slot}: shape mismatch across branches"
+                    raise ValueError(msg)
+                if node_shape is not None and then_shape is not None and node_shape != then_shape:
+                    msg = f"node {node.id!r} (If) output {slot}: shape mismatch with then_branch"
+                    raise ValueError(msg)
+                if node_shape is not None and else_shape is not None and node_shape != else_shape:
+                    msg = f"node {node.id!r} (If) output {slot}: shape mismatch with else_branch"
+                    raise ValueError(msg)

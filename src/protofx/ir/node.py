@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from protofx.ir.graph import Graph
     from protofx.ir.value import Value
 
 type AttributeValue = int | float | str | bytes | list[int] | list[float] | list[str] | list[bytes]
@@ -43,6 +44,7 @@ class Node:
         domain: ONNX operator domain. Defaults to ``""`` (default domain).
         opset_version: ONNX opset version, or ``None`` if unspecified.
         attributes: Normalized Python-native attributes. Defaults to empty dict.
+        subgraphs: Structural child subgraphs keyed by attribute name.
         name: Original ONNX node name for diagnostics, or ``None``.
     """
 
@@ -53,6 +55,7 @@ class Node:
     domain: str = ""
     opset_version: int | None = None
     attributes: dict[str, AttributeValue] = field(default_factory=dict)
+    subgraphs: dict[str, SubgraphValue] = field(default_factory=dict)
     name: str | None = None
 
     @property
@@ -64,3 +67,11 @@ class Node:
     def outputs(self) -> tuple[Value, ...]:
         """Return an immutable snapshot of this node's output values."""
         return tuple(self._outputs)
+
+
+type SubgraphValue = Graph | tuple[Graph, ...]
+"""Structural child subgraph value type.
+
+Child subgraphs are structural data and are intentionally separated from
+scalar ``attributes``.
+"""

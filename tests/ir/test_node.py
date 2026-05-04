@@ -110,6 +110,10 @@ class TestNodeFields:
         fields = {f.name for f in dataclasses.fields(Node)}
         assert "name" in fields
 
+    def test_has_subgraphs_field(self) -> None:
+        fields = {f.name for f in dataclasses.fields(Node)}
+        assert "subgraphs" in fields
+
 
 # ---------------------------------------------------------------------------
 # Node mutability -- Graph is the owner, but Node allows assignment
@@ -148,6 +152,12 @@ class TestNodeMutability:
         node.opset_version = 13
         assert node.opset_version == 13
 
+    def test_can_set_subgraphs(self, node: Node) -> None:
+        from protofx.ir.graph import Graph
+
+        node.subgraphs = {"then_branch": Graph(name="then")}
+        assert "then_branch" in node.subgraphs
+
 
 # ---------------------------------------------------------------------------
 # Node defaults
@@ -180,6 +190,19 @@ class TestNodeDefaults:
     def test_name_default_none(self) -> None:
         node = Node(id="n0", op_type="Relu")
         assert node.name is None
+
+    def test_subgraphs_default_empty_dict(self) -> None:
+        node = Node(id="n0", op_type="Relu")
+        assert node.subgraphs == {}
+
+    def test_attributes_and_subgraphs_are_separate(self) -> None:
+        from protofx.ir.graph import Graph
+
+        node = Node(id="n0", op_type="If")
+        node.attributes["alpha"] = 0.25
+        node.subgraphs["then_branch"] = Graph(name="then")
+        assert "alpha" in node.attributes
+        assert "alpha" not in node.subgraphs
 
 
 # ---------------------------------------------------------------------------
