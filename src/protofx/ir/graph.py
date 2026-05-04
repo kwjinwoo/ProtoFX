@@ -527,10 +527,14 @@ class Graph:
             return False
         if len(lhs) != len(rhs):
             return True
-        return any(
-            left_dim is not None and right_dim is not None and left_dim != right_dim
-            for left_dim, right_dim in zip(lhs, rhs, strict=True)
-        )
+        for left_dim, right_dim in zip(lhs, rhs, strict=True):
+            if left_dim is None or right_dim is None:
+                continue
+            if isinstance(left_dim, str) or isinstance(right_dim, str):
+                continue
+            if left_dim != right_dim:
+                return True
+        return False
 
     def _validate_if_nodes(self) -> None:
         """Validate ``If`` branch contracts on this graph only."""
