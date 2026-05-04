@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import operator
+
 import numpy as np
 import torch
 from onnx import TensorProto, helper
 
 from protofx.emitters import emit_graph
 from protofx.importers import import_model
+from protofx.ir import DType, Graph, TensorType
 
 
 def _make_relu_model() -> bytes:
@@ -79,3 +82,51 @@ class TestEndToEndRelu:
 
         ops = [n.op for n in gm.graph.nodes]
         assert ops == ["placeholder", "call_function", "output"]
+
+
+class TestChildGraphEmissionSmoke:
+    """Smoke-test child-graph helper integration with a temporary test op."""
+
+    def test_nested_child_graph_roundtrip(self) -> None:
+        """Nested child graph callables should run through emit_graph forward."""
+        from protofx.ops._registry import register_op
+
+        @register_op("_EmitterE2EChild")
+        def _handler(node, args, fx_graph, module):
+            helper = getattr(module, "_protofx_child_graph_emitter", None)
+            if helper is None:
+                raise ValueError("missing internal child graph emitter helper")
+
+            child_graph = node.subgraphs.get("then_branch")
+            if not isinstance(child_graph, Graph):
+                raise ValueError("missing child graph for _EmitterE2EChild")
+
+            branch, _ = helper.make_callable(owner_node=node, branch_name="then_branch", child_graph=child_graph)
+            packed = fx_graph.call_function(branch, args=(args[0],))
+            return [fx_graph.call_function(operator.getitem, args=(packed, 0))]
+
+        graph = Graph(name="parent")
+        x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="x")
+
+        child = Graph(name="child", parent=graph)
+        child_x = child.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="x")
+        child_relu = child.make_node(
+            op_type="Relu",
+            inputs=[child_x],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+        )
+        child.set_graph_outputs([child_relu.outputs[0]])
+
+        node = graph.make_node(
+            op_type="_EmitterE2EChild",
+            inputs=[x],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2, 3))],
+            subgraphs={"then_branch": child},
+            name="cf",
+        )
+        graph.set_graph_outputs([node.outputs[0]])
+
+        gm = emit_graph(graph)
+        (result,) = gm(torch.tensor([[-1.0, 0.0, 1.0], [2.0, -3.0, 4.0]]))
+        expected = torch.tensor([[0.0, 0.0, 1.0], [2.0, 0.0, 4.0]])
+        assert torch.equal(result, expected)

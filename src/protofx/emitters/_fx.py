@@ -7,6 +7,7 @@ importer and IR core never depend on ``torch.fx``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     import torch.fx
 
 from protofx.ir.graph import Graph
+from protofx.ir.node import Node
 from protofx.ir.value import Value, ValueKind
 from protofx.ops import dispatch_op
 
@@ -64,6 +66,100 @@ def _emit_data_value(
     value_map[value.id] = fx_node
 
 
+class _ChildGraphEmitter:
+    """Internal helper that lowers child IR graphs and registers callable branch wrappers."""
+
+    def __init__(self, root: torch.nn.Module) -> None:
+        """Initialize the helper for one root GraphModule build.
+
+        Args:
+            root: The root module receiving child submodules.
+        """
+        self._root = root
+        self._attr_counter: dict[str, int] = {}
+
+    def make_callable(
+        self,
+        *,
+        owner_node: Node,
+        branch_name: str,
+        child_graph: Graph,
+    ) -> tuple[Callable[..., tuple[torch.Tensor, ...]], int]:
+        """Lower a child graph and return a callable branch wrapper.
+
+        Args:
+            owner_node: The parent IR node that owns the child graph.
+            branch_name: Child-graph key (e.g. ``"then_branch"``).
+            child_graph: Child IR graph to lower.
+
+        Returns:
+            A tuple ``(branch_callable, output_arity)``.
+        """
+        branch_callable, arity, _ = self._build_callable(
+            owner_node=owner_node, branch_name=branch_name, child_graph=child_graph
+        )
+        return branch_callable, arity
+
+    def make_callable_attr(
+        self,
+        *,
+        owner_node: Node,
+        branch_name: str,
+        child_graph: Graph,
+    ) -> tuple[str, int]:
+        """Lower a child graph and return a root-module attribute containing the callable.
+
+        Args:
+            owner_node: The parent IR node that owns the child graph.
+            branch_name: Child-graph key (e.g. ``"then_branch"``).
+            child_graph: Child IR graph to lower.
+
+        Returns:
+            A tuple ``(callable_attr_name, output_arity)``.
+        """
+        _, arity, callable_attr = self._build_callable(
+            owner_node=owner_node, branch_name=branch_name, child_graph=child_graph
+        )
+        return callable_attr, arity
+
+    def _build_callable(
+        self,
+        *,
+        owner_node: Node,
+        branch_name: str,
+        child_graph: Graph,
+    ) -> tuple[Callable[..., tuple[torch.Tensor, ...]], int, str]:
+        """Create and register a callable wrapper for one child graph."""
+        if child_graph.parent is None:
+            msg = f"{owner_node.op_type}: child graph {branch_name!r} is missing parent linkage"
+            raise ValueError(msg)
+
+        base = _sanitize_name(f"{owner_node.name or owner_node.id}_{branch_name}", "child_graph")
+        count = self._attr_counter.get(base, 0)
+        attr_name = base if count == 0 else f"{base}_{count}"
+        self._attr_counter[base] = count + 1
+
+        child_module = emit_graph(child_graph)
+        self._root.add_module(attr_name, child_module)
+
+        def _branch_callable(*operands: torch.Tensor) -> tuple[torch.Tensor, ...]:
+            import torch
+
+            outputs = child_module(*operands)
+            packed = outputs if isinstance(outputs, tuple) else (outputs,)
+            normalized: list[torch.Tensor | object] = []
+            for output in packed:
+                if isinstance(output, torch.Tensor):
+                    normalized.append(output.clone())
+                else:
+                    normalized.append(output)
+            return tuple(normalized)
+
+        callable_attr = f"{attr_name}_fn"
+        setattr(self._root, callable_attr, _branch_callable)
+        return _branch_callable, len(child_graph.outputs), callable_attr
+
+
 def emit_graph(graph: Graph) -> torch.fx.GraphModule:
     """Convert a normalized ``ir.Graph`` into a ``torch.fx.GraphModule``.
 
@@ -82,6 +178,7 @@ def emit_graph(graph: Graph) -> torch.fx.GraphModule:
 
     fx_graph = torch.fx.Graph()
     root = torch.nn.Module()
+    root._protofx_child_graph_emitter = _ChildGraphEmitter(root)  # type: ignore[attr-defined]
     value_map: dict[str, torch.fx.Node] = {}
     attr_counter: dict[str, int] = {}
 
