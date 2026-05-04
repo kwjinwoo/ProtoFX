@@ -377,6 +377,8 @@ def _import_nodes(
     vi_map: dict[str, onnx.TypeProto],
     *,
     default_opset: int | None = None,
+    parent_value_registry: dict[str, Value] | None = None,
+    capture_order: list[str] | None = None,
 ) -> None:
     """Import ONNX nodes into the IR graph with use-def wiring.
 
@@ -404,8 +406,20 @@ def _import_nodes(
         for input_name in node_proto.input:
             if not input_name:
                 inputs.append(graph.add_sentinel())
-            else:
+            elif input_name in value_registry:
                 inputs.append(value_registry[input_name])
+            elif parent_value_registry is not None and input_name in parent_value_registry:
+                captured = graph.add_input(
+                    tensor_type=parent_value_registry[input_name].tensor_type,
+                    name=input_name,
+                )
+                value_registry[input_name] = captured
+                if capture_order is not None:
+                    capture_order.append(input_name)
+                inputs.append(captured)
+            else:
+                msg = f"unresolved input {input_name!r} for node {node_proto.op_type!r}"
+                raise ValueError(msg)
 
         # Resolve output types
         output_types: list[TensorType] = []
@@ -419,8 +433,44 @@ def _import_nodes(
 
         # Normalize attributes
         attributes: dict[str, AttributeValue] = {}
+        subgraphs: dict[str, Graph | tuple[Graph, ...]] = {}
+        if_capture_order: list[str] | None = None
         for attr in node_proto.attribute:
+            if attr.type == onnx.AttributeProto.GRAPH:
+                child_graph, child_captures = _import_graph_proto(
+                    attr.g,
+                    default_opset=default_opset,
+                    parent=graph,
+                    parent_value_registry=value_registry,
+                )
+                subgraphs[attr.name] = child_graph
+                if node_proto.op_type == "If":
+                    if if_capture_order is None:
+                        if_capture_order = child_captures
+                    elif child_captures != if_capture_order:
+                        msg = f"If node {node_proto.name or node_proto.op_type!r}: inconsistent branch captures"
+                        raise ValueError(msg)
+                continue
+            if attr.type == onnx.AttributeProto.GRAPHS:
+                child_graphs: list[Graph] = []
+                for child_proto in attr.graphs:
+                    child_graph, _ = _import_graph_proto(
+                        child_proto,
+                        default_opset=default_opset,
+                        parent=graph,
+                        parent_value_registry=value_registry,
+                    )
+                    child_graphs.append(child_graph)
+                subgraphs[attr.name] = tuple(child_graphs)
+                continue
             attributes[attr.name] = _normalize_attribute(attr)
+
+        if node_proto.op_type == "If" and if_capture_order:
+            for capture_name in if_capture_order:
+                if capture_name not in value_registry:
+                    msg = f"If node {node_proto.name or node_proto.op_type!r}: unresolved capture {capture_name!r}"
+                    raise ValueError(msg)
+                inputs.append(value_registry[capture_name])
 
         # Normalize Conv/ConvTranspose auto_pad to explicit pads
         if node_proto.op_type in ("Conv", "ConvTranspose") and node_proto.domain in ("", "ai.onnx"):
@@ -445,6 +495,7 @@ def _import_nodes(
             domain=node_proto.domain,
             opset_version=opset_version,
             attributes=attributes,
+            subgraphs=subgraphs,
             name=node_proto.name or None,
             output_names=output_names,
         )
@@ -453,6 +504,58 @@ def _import_nodes(
         for out_value in ir_node.outputs:
             if out_value.name:
                 value_registry[out_value.name] = out_value
+
+
+def _import_graph_proto(
+    graph_proto: onnx.GraphProto,
+    *,
+    default_opset: int | None,
+    parent: Graph | None,
+    parent_value_registry: dict[str, Value] | None,
+) -> tuple[Graph, list[str]]:
+    """Import one ONNX ``GraphProto`` into an IR graph.
+
+    Args:
+        graph_proto: The source ONNX graph.
+        default_opset: Default domain opset version from the model.
+        parent: Optional parent IR graph.
+        parent_value_registry: Optional outer-scope values for capture normalization.
+
+    Returns:
+        A tuple ``(graph, capture_order)`` where ``capture_order`` lists outer-scope
+        capture names materialized as explicit child-graph inputs.
+    """
+    graph = Graph(name=graph_proto.name or None, parent=parent)
+
+    init_names = _import_initializers(graph, graph_proto)
+    _import_inputs(graph, graph_proto, init_names)
+
+    value_registry: dict[str, Value] = {}
+    for value in graph.inputs:
+        if value.name:
+            value_registry[value.name] = value
+    for value in graph.initializers:
+        if value.name:
+            value_registry[value.name] = value
+
+    capture_order: list[str] = []
+    vi_map = _build_value_info_map(graph_proto)
+    _import_nodes(
+        graph,
+        graph_proto,
+        value_registry,
+        vi_map,
+        default_opset=default_opset,
+        parent_value_registry=parent_value_registry,
+        capture_order=capture_order,
+    )
+
+    graph_outputs: list[Value] = []
+    for out_vi in graph_proto.output:
+        if out_vi.name in value_registry:
+            graph_outputs.append(value_registry[out_vi.name])
+    graph.set_graph_outputs(graph_outputs)
+    return graph, capture_order
 
 
 # ------------------------------------------------------------------
@@ -479,9 +582,6 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
     except Exception:
         pass  # Inference failure is non-fatal; missing types become None
 
-    graph_proto = model_proto.graph
-    graph = Graph(name=graph_proto.name or None)
-
     # Extract default domain opset version
     default_opset: int | None = None
     for opset in model_proto.opset_import:
@@ -489,31 +589,12 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
             default_opset = opset.version
             break
 
-    # Phase 1: initializers first (needed for input dedup)
-    init_names = _import_initializers(graph, graph_proto)
-
-    # Phase 2: graph inputs (filtered against initializer names)
-    _import_inputs(graph, graph_proto, init_names)
-
-    # Phase 3: build value registry from inputs + initializers
-    value_registry: dict[str, Value] = {}
-    for v in graph.inputs:
-        if v.name:
-            value_registry[v.name] = v
-    for v in graph.initializers:
-        if v.name:
-            value_registry[v.name] = v
-
-    # Phase 4: import nodes
-    vi_map = _build_value_info_map(graph_proto)
-    _import_nodes(graph, graph_proto, value_registry, vi_map, default_opset=default_opset)
-
-    # Phase 5: set graph outputs
-    graph_outputs: list[Value] = []
-    for out_vi in graph_proto.output:
-        if out_vi.name in value_registry:
-            graph_outputs.append(value_registry[out_vi.name])
-    graph.set_graph_outputs(graph_outputs)
+    graph, _ = _import_graph_proto(
+        model_proto.graph,
+        default_opset=default_opset,
+        parent=None,
+        parent_value_registry=None,
+    )
 
     # Phase 6: validate IR invariants (fail-fast contract)
     graph.validate()

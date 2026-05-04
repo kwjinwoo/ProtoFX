@@ -881,6 +881,99 @@ class TestImportModelEntryPoint:
         assert custom_out.tensor_type.shape is None
 
 
+# ── Control-Flow Import ───────────────────────────────────────────────
+
+
+class TestControlFlowImport:
+    """Verify child-graph import and capture normalization for control-flow nodes."""
+
+    def _make_if_model_with_capture(self) -> onnx.ModelProto:
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        then_node = helper.make_node("Identity", ["x"], ["then_out"])
+        then_graph = helper.make_graph(
+            [then_node],
+            "then_branch",
+            [],
+            [helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [2])],
+        )
+
+        else_node = helper.make_node("Neg", ["x"], ["else_out"])
+        else_graph = helper.make_graph(
+            [else_node],
+            "else_branch",
+            [],
+            [helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [2])],
+        )
+
+        if_node = helper.make_node("If", ["cond"], ["y"], then_branch=then_graph, else_branch=else_graph)
+        graph = helper.make_graph([if_node], "if_graph", [cond, x], [y])
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+    def test_if_subgraphs_are_structural(self) -> None:
+        model = self._make_if_model_with_capture()
+        graph = import_model(model)
+        if_node = graph.nodes[0]
+
+        assert "then_branch" not in if_node.attributes
+        assert "else_branch" not in if_node.attributes
+        assert "then_branch" in if_node.subgraphs
+        assert "else_branch" in if_node.subgraphs
+
+    def test_if_child_graph_parent_linkage_and_graph_local_registry(self) -> None:
+        model = self._make_if_model_with_capture()
+        graph = import_model(model)
+        if_node = graph.nodes[0]
+        then_branch = if_node.subgraphs["then_branch"]
+        else_branch = if_node.subgraphs["else_branch"]
+        assert then_branch.parent is graph
+        assert else_branch.parent is graph
+
+        then_input = then_branch.inputs[0]
+        assert then_input.id in {value.id for value in then_branch.inputs}
+        assert all(then_input is not parent_input for parent_input in graph.inputs)
+
+    def test_if_capture_is_normalized_to_explicit_child_input(self) -> None:
+        model = self._make_if_model_with_capture()
+        graph = import_model(model)
+        if_node = graph.nodes[0]
+        then_branch = if_node.subgraphs["then_branch"]
+        else_branch = if_node.subgraphs["else_branch"]
+
+        assert [inp.name for inp in then_branch.inputs] == ["x"]
+        assert [inp.name for inp in else_branch.inputs] == ["x"]
+        assert [inp.name for inp in if_node.inputs] == ["cond", "x"]
+
+    def test_if_malformed_capture_interface_raises(self) -> None:
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        then_node = helper.make_node("Identity", ["x"], ["then_out"])
+        then_graph = helper.make_graph(
+            [then_node],
+            "then_branch",
+            [],
+            [helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [2])],
+        )
+        else_node = helper.make_node("Identity", ["missing_capture"], ["else_out"])
+        else_graph = helper.make_graph(
+            [else_node],
+            "else_branch",
+            [],
+            [helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [2])],
+        )
+
+        if_node = helper.make_node("If", ["cond"], ["y"], then_branch=then_graph, else_branch=else_graph)
+        graph = helper.make_graph([if_node], "if_graph", [cond, x], [y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+        with np.testing.assert_raises_regex(ValueError, "unresolved input"):
+            import_model(model)
+
+
 # ── Validate Contract ─────────────────────────────────────────────────
 
 
