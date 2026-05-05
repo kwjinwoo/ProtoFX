@@ -76,11 +76,11 @@ Internal registries and auto-ID counters remain private implementation details.
 
 Supported graph construction APIs include:
 
-- `add_input(tensor_type, *, name=None)`
+- `add_input(*, tensor_type, name=None)`
 - `add_sentinel()`
-- `add_constant(tensor_type, data, *, name=None)`
-- `add_initializer(tensor_type, data, *, name=None)`
-- `make_node(op_type, inputs, output_types, *, domain="", opset_version=None, attributes=None, subgraphs=None, name=None, output_names=None)`
+- `add_constant(*, tensor_type, data, name=None)`
+- `add_initializer(*, tensor_type, data, name=None)`
+- `make_node(*, op_type, inputs, output_types, domain="", opset_version=None, attributes=None, subgraphs=None, name=None, output_names=None)`
 
 Control-flow-capable implementations may add graph-aware helpers for attaching child subgraphs, but those helpers
 must preserve the same ownership rules and keep child graphs separate from scalar attributes.
