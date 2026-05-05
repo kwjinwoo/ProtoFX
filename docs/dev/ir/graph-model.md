@@ -1,8 +1,34 @@
+---
+schema_version: 1
+doc_kind: dev
+title: IR graph model
+summary: Normative graph-ownership, node-shape, and mutation contract for ProtoFX IR, including control-flow child subgraph structure.
+authority: authoritative
+keywords: [ir, graph, node, ownership, control-flow]
+source_of_truth:
+  - src/protofx/ir/
+  - tests/ir/
+related_docs:
+  - docs/adr/0001-thin-graph-owned-ir.md
+  - docs/adr/0008-control-flow-subgraphs-and-if-mvp.md
+  - docs/dev/ir/control-flow.md
+---
+
 # IR Graph Model
+
+<!-- section:purpose -->
+## Purpose
 
 This document defines graph ownership and mutation responsibilities in ProtoFX IR.
 
-## Ownership Model
+<!-- section:scope -->
+## Scope
+
+This contract covers the structural shape of `ir.Graph` and `ir.Node`, the ownership boundary for graph-managed
+relationships, and the control-flow extension that introduces child subgraphs.
+
+<!-- section:contract -->
+## Contract
 
 ProtoFX uses a graph-owned model rather than distributing structural invariants across `Node` and `Value`
 constructors.
@@ -10,81 +36,81 @@ constructors.
 - `ir.Graph` owns node membership, value membership, topological order, and use-def consistency.
 - `ir.Node` and `ir.Value` remain mutable entities, but structural updates flow through graph-aware APIs.
 - `ir.TensorType` remains immutable and is replaced rather than mutated in place.
-
-## Read-Only Structural Views
-
-The public API stays convenient while ownership remains centralized.
-
 - `Value.producer` and `Value.users` are read-only properties backed by graph-managed private state.
-- `Node.inputs` and `Node.outputs` are read-only properties returning tuple snapshots backed by graph-managed
-  private state.
-
-This prevents external code from bypassing graph-managed rewiring rules.
-
-## Node Model
+- `Node.inputs` and `Node.outputs` are read-only properties returning tuple snapshots backed by graph-managed private
+  state.
 
 `ir.Node` represents one normalized operation.
 
 Expected field shape:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `str` | Stable internal identifier |
-| `op_type` | `str` | ONNX operator type |
-| `inputs` | `list[Value]` | Ordered input values |
-| `outputs` | `list[Value]` | Ordered output values |
-| `domain` | `str` | ONNX domain |
-| `opset_version` | `int | None` | Node opset version |
-| `attributes` | `dict[str, AttributeValue]` | Normalized attributes |
-| `name` | `str | None` | Original ONNX node name |
+| Field | Description |
+|-------|-------------|
+| `id` | Stable internal identifier |
+| `op_type` | ONNX operator type |
+| `inputs` | Ordered input values |
+| `outputs` | Ordered output values |
+| `domain` | ONNX operator domain |
+| `opset_version` | Node opset version, or `None` when unspecified |
+| `attributes` | Normalized scalar and list-like attributes only |
+| `subgraphs` | Dedicated child-subgraph mapping keyed by ONNX attribute name; each entry stores one child graph or an ordered child-graph collection |
+| `name` | Original ONNX node name, when available |
 
-`AttributeValue` is the normalized Python-native attribute space used after import.
+`AttributeValue` remains the normalized Python-native attribute space used after import. Structural child graphs do
+not belong to that attribute space.
 
-## Graph Model
-
-`ir.Graph` is the structural owner of all `Node` and `Value` instances.
+`ir.Graph` is the structural owner of all `Node` and `Value` instances within one graph boundary.
 
 Expected state:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `inputs` | `list[Value]` | Ordered graph inputs |
-| `outputs` | `list[Value]` | Ordered graph outputs |
-| `initializers` | `list[Value]` | Ordered graph initializers |
-| `nodes` | `list[Node]` | Nodes in topological order |
+| Field | Description |
+|-------|-------------|
+| `name` | Optional graph name |
+| `parent` | Optional enclosing `Graph` for child-subgraph ownership |
+| `inputs` | Ordered graph inputs |
+| `outputs` | Ordered graph outputs |
+| `initializers` | Ordered graph initializers |
+| `nodes` | Nodes that belong to this graph boundary |
 
 Internal registries and auto-ID counters remain private implementation details.
 
-## Construction APIs
+Supported graph construction APIs include:
 
 - `add_input(tensor_type, *, name=None)`
 - `add_sentinel()`
 - `add_constant(tensor_type, data, *, name=None)`
 - `add_initializer(tensor_type, data, *, name=None)`
-- `make_node(op_type, inputs, output_types, *, domain="", opset_version=None, attributes=None, name=None)`
+- `make_node(op_type, inputs, output_types, *, domain="", opset_version=None, attributes=None, subgraphs=None, name=None, output_names=None)`
 
-`add_sentinel` creates a `SENTINEL` value with unknown tensor metadata and no data payload.
-`add_constant` creates a `CONSTANT` value with a `numpy.ndarray` payload (no producer).
-`add_initializer` creates an `INITIALIZER` value with a `numpy.ndarray` payload and appends it to
-`graph.initializers`.
-
-These APIs create values and nodes as a single graph-level operation so producer and user links stay
-consistent.
-
-## Mutation APIs
+Control-flow-capable implementations may add graph-aware helpers for attaching child subgraphs, but those helpers
+must preserve the same ownership rules and keep child graphs separate from scalar attributes.
 
 All graph mutations go through `Graph` methods.
 
-- `set_node_inputs(node, new_inputs)`
-- `set_value_type(value, tensor_type)`
-- `set_graph_outputs(outputs)`
-- `remove_node(node)`
+<!-- section:invariants -->
+## Invariants
 
-## Analysis APIs
+- Structural ownership remains centralized in `ir.Graph`.
+- Child graphs remain independent graph boundaries linked only through `parent`.
+- Parent and child graphs do not share one value registry or one node list.
+- Control-flow structure must never bypass graph-managed ownership by storing child graphs inside scalar attributes.
 
-- `topological_sort()`
-- `validate()`
+<!-- section:failure-semantics -->
+## Failure Semantics
 
-Validation must enforce graph well-formedness, use-def consistency, input/output ordering, acyclicity,
-kind-specific producer rules, graph output registration, and ownership consistency for `GRAPH_INPUT` and
-`INITIALIZER` values.
+- Invalid cross-graph membership, invalid ownership, or invalid use-def state must fail through graph validation.
+- Implementations must not silently flatten parent and child graphs into one undifferentiated structural space.
+
+<!-- section:non-goals -->
+## Non-Goals
+
+- Defining a full region or CFG IR
+- Encoding structural child graphs as raw ONNX protobuf attributes
+- Requiring `graph.nodes` to remain permanently topologically sorted after every mutation
+
+<!-- section:references -->
+## References
+
+- Related code: `src/protofx/ir/graph.py`, `src/protofx/ir/node.py`, `src/protofx/ir/value.py`
+- Related tests: `tests/ir/`
+- Related ADRs: `docs/adr/0001-thin-graph-owned-ir.md`, `docs/adr/0008-control-flow-subgraphs-and-if-mvp.md`
