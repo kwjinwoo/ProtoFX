@@ -1007,6 +1007,115 @@ class TestControlFlowImport:
             import_model(model)
 
 
+class TestGenericChildSubgraphImport:
+    """Verify generic GRAPH/GRAPHS child-subgraph normalization at import time."""
+
+    @staticmethod
+    def _make_generic_graph_attr_model() -> onnx.ModelProto:
+        seed = helper.make_tensor_value_info("seed", TensorProto.FLOAT, [2])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        child_node = helper.make_node("Add", ["b", "x"], ["child_out"])
+        child_graph = helper.make_graph(
+            [child_node],
+            "body",
+            [],
+            [helper.make_tensor_value_info("child_out", TensorProto.FLOAT, [2])],
+        )
+        node = helper.make_node("CustomGraphOp", ["seed"], ["y"], body=child_graph, domain="custom.domain")
+        graph = helper.make_graph([node], "root", [seed, x, b], [y])
+        return helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("custom.domain", 1)],
+        )
+
+    @staticmethod
+    def _make_generic_graphs_attr_model() -> onnx.ModelProto:
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        first_node = helper.make_node("Add", ["b", "x"], ["first_out"])
+        first_graph = helper.make_graph(
+            [first_node],
+            "first",
+            [],
+            [helper.make_tensor_value_info("first_out", TensorProto.FLOAT, [2])],
+        )
+        second_node = helper.make_node("Sub", ["x", "b"], ["second_out"])
+        second_graph = helper.make_graph(
+            [second_node],
+            "second",
+            [],
+            [helper.make_tensor_value_info("second_out", TensorProto.FLOAT, [2])],
+        )
+        node = helper.make_node(
+            "CustomGraphsOp", [], ["y"], regions=[first_graph, second_graph], domain="custom.domain"
+        )
+        graph = helper.make_graph([node], "root", [x, b], [y])
+        return helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("custom.domain", 1)],
+        )
+
+    def test_graph_attr_subgraph_is_structural_and_captures_are_explicit(self) -> None:
+        model = self._make_generic_graph_attr_model()
+        graph = import_model(model)
+        node = graph.nodes[0]
+        child_graph = node.subgraphs["body"]
+
+        assert "body" not in node.attributes
+        assert isinstance(child_graph, type(graph))
+        assert [value.name for value in node.inputs] == ["seed", "x", "b"]
+        assert [value.name for value in child_graph.inputs] == ["x", "b"]
+
+    def test_graphs_attr_preserves_ordered_tuple_and_normalized_capture_interface(self) -> None:
+        model = self._make_generic_graphs_attr_model()
+        graph = import_model(model)
+        node = graph.nodes[0]
+        subgraphs = node.subgraphs["regions"]
+
+        assert "regions" not in node.attributes
+        assert isinstance(subgraphs, tuple)
+        assert [child.name for child in subgraphs] == ["first", "second"]
+        assert [value.name for value in node.inputs] == ["x", "b"]
+        assert [value.name for value in subgraphs[0].inputs] == ["x", "b"]
+        assert [value.name for value in subgraphs[1].inputs] == ["x", "b"]
+
+    def test_graphs_attr_inconsistent_capture_interface_raises(self) -> None:
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        first_node = helper.make_node("Identity", ["x"], ["first_out"])
+        first_graph = helper.make_graph(
+            [first_node],
+            "first",
+            [],
+            [helper.make_tensor_value_info("first_out", TensorProto.FLOAT, [2])],
+        )
+        second_node = helper.make_node("Identity", ["b"], ["second_out"])
+        second_graph = helper.make_graph(
+            [second_node],
+            "second",
+            [],
+            [helper.make_tensor_value_info("second_out", TensorProto.FLOAT, [2])],
+        )
+        node = helper.make_node(
+            "CustomGraphsOp", [], ["y"], regions=[first_graph, second_graph], domain="custom.domain"
+        )
+        graph = helper.make_graph([node], "root", [x, b], [y])
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("custom.domain", 1)],
+        )
+
+        with np.testing.assert_raises_regex(ValueError, "inconsistent child-graph capture interface"):
+            import_model(model)
+
+
 # ── Validate Contract ─────────────────────────────────────────────────
 
 
