@@ -375,13 +375,15 @@ def _reorder_child_capture_inputs(
     *,
     child_capture_names: list[str],
     normalized_capture_order: list[str],
+    owner_label: str,
 ) -> None:
     """Apply normalized capture input ordering to a child graph.
 
     Args:
         child_graph: Imported child graph to reorder.
         child_capture_names: Capture names materialized in this child graph.
-        normalized_capture_order: Shared capture ordering for both If branches.
+        normalized_capture_order: Parent-scoped normalized capture ordering.
+        owner_label: Diagnostic owner label for fail-fast errors.
     """
     if not child_capture_names:
         return
@@ -392,7 +394,7 @@ def _reorder_child_capture_inputs(
     }
     if set(capture_values_by_name) != capture_name_set:
         missing = sorted(capture_name_set - set(capture_values_by_name))
-        msg = f"If node {child_graph.name or 'If'!r}: unresolved capture inputs in child graph: {missing!r}"
+        msg = f"{owner_label}: unresolved capture inputs in child graph: {missing!r}"
         raise ValueError(msg)
 
     non_capture_inputs = [value for value in child_graph.inputs if value.name not in capture_name_set]
@@ -441,12 +443,57 @@ def _normalize_if_capture_order(
         then_graph,
         child_capture_names=then_captures,
         normalized_capture_order=normalized_capture_order,
+        owner_label=f"If node {node_proto.name or node_proto.op_type!r}",
     )
     _reorder_child_capture_inputs(
         else_graph,
         child_capture_names=else_captures,
         normalized_capture_order=normalized_capture_order,
+        owner_label=f"If node {node_proto.name or node_proto.op_type!r}",
     )
+    return normalized_capture_order
+
+
+def _normalize_generic_child_capture_order(
+    node_proto: onnx.NodeProto,
+    value_registry: dict[str, Value],
+    child_capture_entries: list[tuple[Graph, list[str]]],
+) -> list[str]:
+    """Normalize generic child-graph captures to one shared interface.
+
+    Args:
+        node_proto: Source node carrying GRAPH/GRAPHS attributes.
+        value_registry: Parent graph name-to-value registry.
+        child_capture_entries: Child graphs paired with their materialized captures.
+
+    Returns:
+        Ordered capture names to append to the parent node interface.
+    """
+    if not child_capture_entries:
+        return []
+
+    owner_label = f"node {node_proto.name or node_proto.op_type!r}"
+    normalized_sets = [set(capture_names) for _child_graph, capture_names in child_capture_entries]
+    expected_capture_set = normalized_sets[0]
+    for capture_set in normalized_sets[1:]:
+        if capture_set != expected_capture_set:
+            msg = f"{owner_label}: inconsistent child-graph capture interface"
+            raise ValueError(msg)
+
+    normalized_capture_order = [name for name in value_registry if name in expected_capture_set]
+    unresolved_capture_names = sorted(expected_capture_set - set(normalized_capture_order))
+    if unresolved_capture_names:
+        unresolved_name = unresolved_capture_names[0]
+        msg = f"{owner_label}: unresolved capture {unresolved_name!r}"
+        raise ValueError(msg)
+
+    for child_graph, child_capture_names in child_capture_entries:
+        _reorder_child_capture_inputs(
+            child_graph,
+            child_capture_names=child_capture_names,
+            normalized_capture_order=normalized_capture_order,
+            owner_label=owner_label,
+        )
     return normalized_capture_order
 
 
@@ -515,6 +562,7 @@ def _import_nodes(
         attributes: dict[str, AttributeValue] = {}
         subgraphs: dict[str, Graph | tuple[Graph, ...]] = {}
         if_branch_captures: dict[str, tuple[Graph, list[str]]] = {}
+        generic_child_captures: list[tuple[Graph, list[str]]] = []
         for attr in node_proto.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
                 child_graph, child_captures = _import_graph_proto(
@@ -526,24 +574,40 @@ def _import_nodes(
                 subgraphs[attr.name] = child_graph
                 if node_proto.op_type == "If" and attr.name in {"then_branch", "else_branch"}:
                     if_branch_captures[attr.name] = (child_graph, child_captures)
+                else:
+                    generic_child_captures.append((child_graph, child_captures))
                 continue
             if attr.type == onnx.AttributeProto.GRAPHS:
                 child_graphs: list[Graph] = []
+                attr_capture_entries: list[tuple[Graph, list[str]]] = []
                 for child_proto in attr.graphs:
-                    child_graph, _ = _import_graph_proto(
+                    child_graph, child_captures = _import_graph_proto(
                         child_proto,
                         default_opset=default_opset,
                         parent=graph,
                         parent_value_registry=value_registry,
                     )
                     child_graphs.append(child_graph)
+                    attr_capture_entries.append((child_graph, child_captures))
                 subgraphs[attr.name] = tuple(child_graphs)
+                generic_child_captures.extend(attr_capture_entries)
                 continue
             attributes[attr.name] = _normalize_attribute(attr)
 
         if node_proto.op_type == "If":
             normalized_capture_order = _normalize_if_capture_order(node_proto, value_registry, if_branch_captures)
             for capture_name in normalized_capture_order:
+                inputs.append(value_registry[capture_name])
+        else:
+            normalized_capture_order = _normalize_generic_child_capture_order(
+                node_proto,
+                value_registry,
+                generic_child_captures,
+            )
+            existing_input_names = {value.name for value in inputs if value.name is not None}
+            for capture_name in normalized_capture_order:
+                if capture_name in existing_input_names:
+                    continue
                 inputs.append(value_registry[capture_name])
 
         # Normalize Conv/ConvTranspose auto_pad to explicit pads
