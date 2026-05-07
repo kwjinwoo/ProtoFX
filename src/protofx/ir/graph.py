@@ -422,6 +422,7 @@ class Graph:
         self._validate_graph_local_invariants()
         self._validate_child_subgraphs()
         self._validate_if_nodes()
+        self._validate_loop_nodes()
 
     def _validate_graph_local_invariants(self) -> None:
         """Validate graph-local invariants without traversing child graphs."""
@@ -584,4 +585,83 @@ class Graph:
                     raise ValueError(msg)
                 if self._shapes_provably_mismatch(node_shape, else_shape):
                     msg = f"node {node.id!r} (If) output {slot}: shape mismatch with else_branch"
+                    raise ValueError(msg)
+
+    def _validate_loop_nodes(self) -> None:
+        """Validate ``Loop`` body interfaces and loop-carried contracts on this graph only."""
+        for node in self.nodes:
+            if node.op_type != "Loop":
+                continue
+
+            body = node.subgraphs.get("body")
+            if not isinstance(body, Graph):
+                msg = f"node {node.id!r} (Loop): missing required body subgraph"
+                raise ValueError(msg)
+
+            if len(node.inputs) < 2:
+                msg = f"node {node.id!r} (Loop): expected at least M and cond inputs"
+                raise ValueError(msg)
+
+            carried_count = len(node.outputs)
+            expected_body_input_count = len(node.inputs)
+            if len(body.inputs) != expected_body_input_count:
+                msg = (
+                    f"node {node.id!r} (Loop): body input arity mismatch "
+                    f"(body={len(body.inputs)}, expected={expected_body_input_count})"
+                )
+                raise ValueError(msg)
+
+            expected_body_output_count = 1 + carried_count
+            if len(body.outputs) != expected_body_output_count:
+                msg = (
+                    f"node {node.id!r} (Loop): body output arity mismatch "
+                    f"(body={len(body.outputs)}, expected={expected_body_output_count}); "
+                    "scan outputs are unsupported"
+                )
+                raise ValueError(msg)
+
+            cond_input = node.inputs[1]
+            cond_output = body.outputs[0]
+            if (
+                cond_input.tensor_type.dtype is not None
+                and cond_output.tensor_type.dtype is not None
+                and cond_input.tensor_type.dtype != cond_output.tensor_type.dtype
+            ):
+                msg = f"node {node.id!r} (Loop): condition dtype mismatch between input and body output"
+                raise ValueError(msg)
+            if self._shapes_provably_mismatch(cond_input.tensor_type.shape, cond_output.tensor_type.shape):
+                msg = f"node {node.id!r} (Loop): condition shape mismatch between input and body output"
+                raise ValueError(msg)
+
+            for slot in range(carried_count):
+                parent_init = node.inputs[slot + 2]
+                body_in = body.inputs[slot + 2]
+                body_out = body.outputs[slot + 1]
+                parent_out = node.outputs[slot]
+
+                init_dtype = parent_init.tensor_type.dtype
+                body_in_dtype = body_in.tensor_type.dtype
+                body_out_dtype = body_out.tensor_type.dtype
+                parent_out_dtype = parent_out.tensor_type.dtype
+                known_dtypes = [
+                    dtype
+                    for dtype in (init_dtype, body_in_dtype, body_out_dtype, parent_out_dtype)
+                    if dtype is not None
+                ]
+                if known_dtypes and any(dtype != known_dtypes[0] for dtype in known_dtypes[1:]):
+                    msg = f"node {node.id!r} (Loop) carried output {slot}: dtype mismatch"
+                    raise ValueError(msg)
+
+                init_shape = parent_init.tensor_type.shape
+                body_in_shape = body_in.tensor_type.shape
+                body_out_shape = body_out.tensor_type.shape
+                parent_out_shape = parent_out.tensor_type.shape
+                if self._shapes_provably_mismatch(init_shape, body_in_shape):
+                    msg = f"node {node.id!r} (Loop) carried output {slot}: shape mismatch with body input"
+                    raise ValueError(msg)
+                if self._shapes_provably_mismatch(init_shape, body_out_shape):
+                    msg = f"node {node.id!r} (Loop) carried output {slot}: shape mismatch with body output"
+                    raise ValueError(msg)
+                if self._shapes_provably_mismatch(init_shape, parent_out_shape):
+                    msg = f"node {node.id!r} (Loop) carried output {slot}: shape mismatch with parent output"
                     raise ValueError(msg)
