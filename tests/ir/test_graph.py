@@ -1126,3 +1126,75 @@ class TestGraphControlFlowValidation:
         g, if_node = self._make_if_graph()
         ordered = g.topological_sort()
         assert ordered == [if_node]
+
+
+class TestGraphLoopValidation:
+    """Tests for Loop-specific body and loop-carried validation contracts."""
+
+    def _make_loop_graph(self) -> tuple[Graph, object]:
+        graph = Graph(name="main")
+        max_trip_count = graph.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=()), name="M")
+        initial_cond = graph.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=()), name="cond")
+        state_init = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="state_init")
+        capture = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="capture")
+
+        body = Graph(name="body", parent=graph)
+        iter_count = body.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=()), name="iter")
+        body_cond = body.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=()), name="cond_in")
+        body_state = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="state_in")
+        body_capture = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="capture")
+
+        _ = iter_count
+        cond_out = body.make_node(
+            op_type="Identity",
+            inputs=[body_cond],
+            output_types=[TensorType(dtype=DType.BOOL, shape=())],
+        )
+        state_out = body.make_node(
+            op_type="Add",
+            inputs=[body_state, body_capture],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        body.set_graph_outputs([cond_out.outputs[0], state_out.outputs[0]])
+
+        loop_node = graph.make_node(
+            op_type="Loop",
+            inputs=[max_trip_count, initial_cond, state_init, capture],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+            subgraphs={"body": body},
+        )
+        graph.set_graph_outputs([loop_node.outputs[0]])
+        return graph, loop_node
+
+    def test_validate_fails_when_loop_body_is_missing(self) -> None:
+        graph, loop_node = self._make_loop_graph()
+        loop_node.subgraphs = {}
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
+
+    def test_validate_fails_for_loop_body_interface_arity_mismatch(self) -> None:
+        graph, loop_node = self._make_loop_graph()
+        loop_body = loop_node.subgraphs["body"]
+        loop_body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="extra")
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
+
+    def test_validate_fails_for_loop_scan_outputs_in_mvp(self) -> None:
+        graph, loop_node = self._make_loop_graph()
+        loop_body = loop_node.subgraphs["body"]
+        scan_identity = loop_body.make_node(
+            op_type="Identity",
+            inputs=[loop_body.inputs[2]],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        loop_body.set_graph_outputs([loop_body.outputs[0], loop_body.outputs[1], scan_identity.outputs[0]])
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
+
+    def test_validate_fails_for_loop_carried_dtype_mismatch(self) -> None:
+        graph, loop_node = self._make_loop_graph()
+        loop_body = loop_node.subgraphs["body"]
+        carried_value = loop_body.outputs[1]
+        carried_value.tensor_type = TensorType(dtype=DType.INT64, shape=(2,))
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
