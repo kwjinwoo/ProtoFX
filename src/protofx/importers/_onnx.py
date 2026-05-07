@@ -487,6 +487,141 @@ def _normalize_generic_child_capture_order(
     return []
 
 
+def _shapes_provably_mismatch(
+    lhs: tuple[int | str | None, ...] | None,
+    rhs: tuple[int | str | None, ...] | None,
+) -> bool:
+    """Return whether two shapes have a provable mismatch.
+
+    Args:
+        lhs: First shape metadata.
+        rhs: Second shape metadata.
+
+    Returns:
+        ``True`` when available metadata is sufficient to prove a mismatch.
+    """
+    if lhs is None or rhs is None:
+        return False
+    if len(lhs) != len(rhs):
+        return True
+    for left_dim, right_dim in zip(lhs, rhs, strict=True):
+        if left_dim is None or right_dim is None:
+            continue
+        if isinstance(left_dim, str) or isinstance(right_dim, str):
+            continue
+        if left_dim != right_dim:
+            return True
+    return False
+
+
+def _matches_tensor_type(candidate: Value, reference: Value) -> bool:
+    """Return whether two values are shape/dtype compatible based on known metadata.
+
+    Args:
+        candidate: Candidate value metadata.
+        reference: Reference value metadata.
+
+    Returns:
+        ``True`` when known metadata does not prove a mismatch.
+    """
+    candidate_dtype = candidate.tensor_type.dtype
+    reference_dtype = reference.tensor_type.dtype
+    if candidate_dtype is not None and reference_dtype is not None and candidate_dtype != reference_dtype:
+        return False
+    return not _shapes_provably_mismatch(candidate.tensor_type.shape, reference.tensor_type.shape)
+
+
+def _normalize_loop_capture_order(
+    node_proto: onnx.NodeProto,
+    value_registry: dict[str, Value],
+    node_inputs: list[Value],
+    loop_entry: tuple[Graph, list[str]] | None,
+) -> list[str]:
+    """Normalize Loop body interfaces and captures to the MVP contract.
+
+    Args:
+        node_proto: Source Loop node.
+        value_registry: Parent graph name-to-value registry.
+        node_inputs: Parent Loop inputs resolved from ONNX positional operands.
+        loop_entry: Imported Loop body graph and capture names.
+
+    Returns:
+        Loop capture ordering to append to parent Loop node inputs.
+    """
+    if loop_entry is None:
+        return []
+
+    body_graph, body_capture_names = loop_entry
+    capture_name_set = set(body_capture_names)
+    non_capture_inputs = [value for value in body_graph.inputs if value.name not in capture_name_set]
+
+    carried_count = len(node_proto.output)
+    expected_non_capture = 2 + carried_count
+    owner_label = f"Loop node {node_proto.name or node_proto.op_type!r}"
+    if len(non_capture_inputs) != expected_non_capture:
+        msg = (
+            f"{owner_label}: body interface mismatch "
+            f"(body_inputs={len(non_capture_inputs)}, expected={expected_non_capture})"
+        )
+        raise ValueError(msg)
+
+    iteration_value = next(
+        (
+            value
+            for value in non_capture_inputs
+            if value.tensor_type.dtype == DType.INT64 and value.tensor_type.shape == ()
+        ),
+        None,
+    )
+    if iteration_value is None:
+        msg = f"{owner_label}: body interface mismatch (missing iteration counter input)"
+        raise ValueError(msg)
+
+    remaining = [value for value in non_capture_inputs if value is not iteration_value]
+    cond_reference = node_inputs[1] if len(node_inputs) > 1 else None
+    if cond_reference is not None and cond_reference.tensor_type.dtype is not None:
+        cond_value = next((value for value in remaining if _matches_tensor_type(value, cond_reference)), None)
+    else:
+        cond_value = next((value for value in remaining if value.tensor_type.dtype == DType.BOOL), None)
+    if cond_value is None:
+        msg = f"{owner_label}: body interface mismatch (missing incoming condition input)"
+        raise ValueError(msg)
+
+    remaining = [value for value in remaining if value is not cond_value]
+    carried_inputs: list[Value] = []
+    for carried_slot in range(carried_count):
+        parent_slot = carried_slot + 2
+        parent_value = node_inputs[parent_slot]
+        matched = next((value for value in remaining if _matches_tensor_type(value, parent_value)), None)
+        if matched is None:
+            msg = f"{owner_label}: body interface mismatch at carried input {carried_slot}"
+            raise ValueError(msg)
+        carried_inputs.append(matched)
+        remaining = [value for value in remaining if value is not matched]
+
+    if remaining:
+        msg = f"{owner_label}: body interface mismatch (unexpected body inputs)"
+        raise ValueError(msg)
+
+    normalized_capture_order = [name for name in value_registry if name in capture_name_set]
+    unresolved_capture_names = sorted(capture_name_set - set(normalized_capture_order))
+    if unresolved_capture_names:
+        unresolved_name = unresolved_capture_names[0]
+        msg = f"{owner_label}: unresolved capture {unresolved_name!r}"
+        raise ValueError(msg)
+
+    _reorder_child_capture_inputs(
+        body_graph,
+        child_capture_names=body_capture_names,
+        normalized_capture_order=normalized_capture_order,
+        owner_label=owner_label,
+    )
+    capture_values_by_name = {value.name: value for value in body_graph.inputs if value.name is not None}
+    ordered_capture_inputs = [capture_values_by_name[name] for name in normalized_capture_order]
+    body_graph.inputs = [iteration_value, cond_value, *carried_inputs, *ordered_capture_inputs]
+    return normalized_capture_order
+
+
 def _import_nodes(
     graph: Graph,
     graph_proto: onnx.GraphProto,
@@ -552,6 +687,7 @@ def _import_nodes(
         attributes: dict[str, AttributeValue] = {}
         subgraphs: dict[str, Graph | tuple[Graph, ...]] = {}
         if_branch_captures: dict[str, tuple[Graph, list[str]]] = {}
+        loop_body_capture: tuple[Graph, list[str]] | None = None
         generic_child_captures: list[tuple[Graph, list[str]]] = []
         for attr in node_proto.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
@@ -564,6 +700,8 @@ def _import_nodes(
                 subgraphs[attr.name] = child_graph
                 if node_proto.op_type == "If" and attr.name in {"then_branch", "else_branch"}:
                     if_branch_captures[attr.name] = (child_graph, child_captures)
+                elif node_proto.op_type == "Loop" and attr.name == "body":
+                    loop_body_capture = (child_graph, child_captures)
                 else:
                     generic_child_captures.append((child_graph, child_captures))
                 continue
@@ -586,6 +724,12 @@ def _import_nodes(
 
         if node_proto.op_type == "If":
             normalized_capture_order = _normalize_if_capture_order(node_proto, value_registry, if_branch_captures)
+            for capture_name in normalized_capture_order:
+                inputs.append(value_registry[capture_name])
+        elif node_proto.op_type == "Loop":
+            normalized_capture_order = _normalize_loop_capture_order(
+                node_proto, value_registry, inputs, loop_body_capture
+            )
             for capture_name in normalized_capture_order:
                 inputs.append(value_registry[capture_name])
         else:
