@@ -599,16 +599,11 @@ def _import_nodes(
             for capture_name in normalized_capture_order:
                 inputs.append(value_registry[capture_name])
         else:
-            normalized_capture_order = _normalize_generic_child_capture_order(
+            _normalize_generic_child_capture_order(
                 node_proto,
                 value_registry,
                 generic_child_captures,
             )
-            existing_input_names = {value.name for value in inputs if value.name is not None}
-            for capture_name in normalized_capture_order:
-                if capture_name in existing_input_names:
-                    continue
-                inputs.append(value_registry[capture_name])
 
         # Normalize Conv/ConvTranspose auto_pad to explicit pads
         if node_proto.op_type in ("Conv", "ConvTranspose") and node_proto.domain in ("", "ai.onnx"):
