@@ -1007,6 +1007,100 @@ class TestControlFlowImport:
             import_model(model)
 
 
+class TestLoopImport:
+    """Verify Loop-specific body interface and capture normalization at import time."""
+
+    @staticmethod
+    def _make_loop_model(
+        *,
+        loop_inputs: list[str],
+        body_inputs: list[onnx.ValueInfoProto],
+        add_scan_output: bool = False,
+    ) -> onnx.ModelProto:
+        M = helper.make_tensor_value_info("M", TensorProto.INT64, [])
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        state_init = helper.make_tensor_value_info("state_init", TensorProto.FLOAT, [2])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        cond_node = helper.make_node("Identity", ["cond_in"], ["cond_out"])
+        state_node = helper.make_node("Add", ["state_in", "x"], ["state_out"])
+        body_nodes = [cond_node, state_node]
+        body_outputs = [
+            helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("state_out", TensorProto.FLOAT, [2]),
+        ]
+        if add_scan_output:
+            scan_node = helper.make_node("Identity", ["state_in"], ["scan_out"])
+            body_nodes.append(scan_node)
+            body_outputs.append(helper.make_tensor_value_info("scan_out", TensorProto.FLOAT, [2]))
+
+        body_graph = helper.make_graph(body_nodes, "body", body_inputs, body_outputs)
+        loop_node = helper.make_node("Loop", loop_inputs, ["y"], body=body_graph)
+        graph = helper.make_graph([loop_node], "loop_graph", [M, cond, state_init, x], [y])
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+    def test_loop_capture_is_appended_to_parent_inputs(self) -> None:
+        model = self._make_loop_model(
+            loop_inputs=["M", "cond", "state_init"],
+            body_inputs=[
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+            ],
+        )
+        graph = import_model(model)
+        loop_node = graph.nodes[0]
+        loop_body = loop_node.subgraphs["body"]
+
+        assert [value.name for value in loop_node.inputs] == ["M", "cond", "state_init", "x"]
+        assert [value.name for value in loop_body.inputs] == ["iter", "cond_in", "state_in", "x"]
+
+    def test_loop_preserves_omitted_optional_input_sentinels(self) -> None:
+        model = self._make_loop_model(
+            loop_inputs=["", "", "state_init"],
+            body_inputs=[
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+            ],
+        )
+        graph = import_model(model)
+        loop_node = graph.nodes[0]
+
+        assert loop_node.inputs[0].kind == ValueKind.SENTINEL
+        assert loop_node.inputs[1].kind == ValueKind.SENTINEL
+        assert [value.name for value in loop_node.inputs[2:]] == ["state_init", "x"]
+
+    def test_loop_reorders_body_inputs_to_normalized_interface(self) -> None:
+        model = self._make_loop_model(
+            loop_inputs=["M", "cond", "state_init"],
+            body_inputs=[
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+            ],
+        )
+        graph = import_model(model)
+        loop_body = graph.nodes[0].subgraphs["body"]
+
+        assert [value.name for value in loop_body.inputs] == ["iter", "cond_in", "state_in", "x"]
+
+    def test_loop_scan_outputs_are_rejected(self) -> None:
+        model = self._make_loop_model(
+            loop_inputs=["M", "cond", "state_init"],
+            body_inputs=[
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+            ],
+            add_scan_output=True,
+        )
+
+        with np.testing.assert_raises_regex(ValueError, "scan outputs are unsupported"):
+            import_model(model)
+
+
 class TestGenericChildSubgraphImport:
     """Verify generic GRAPH/GRAPHS child-subgraph normalization at import time."""
 
