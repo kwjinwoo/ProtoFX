@@ -1068,10 +1068,10 @@ class TestGenericChildSubgraphImport:
 
         assert "body" not in node.attributes
         assert isinstance(child_graph, type(graph))
-        assert [value.name for value in node.inputs] == ["seed", "x", "b"]
+        assert [value.name for value in node.inputs] == ["seed"]
         assert [value.name for value in child_graph.inputs] == ["x", "b"]
 
-    def test_graphs_attr_preserves_ordered_tuple_and_normalized_capture_interface(self) -> None:
+    def test_graphs_attr_preserves_ordered_tuple_and_structural_child_inputs(self) -> None:
         model = self._make_generic_graphs_attr_model()
         graph = import_model(model)
         node = graph.nodes[0]
@@ -1080,7 +1080,7 @@ class TestGenericChildSubgraphImport:
         assert "regions" not in node.attributes
         assert isinstance(subgraphs, tuple)
         assert [child.name for child in subgraphs] == ["first", "second"]
-        assert [value.name for value in node.inputs] == ["x", "b"]
+        assert [value.name for value in node.inputs] == []
         assert [value.name for value in subgraphs[0].inputs] == ["x", "b"]
         assert [value.name for value in subgraphs[1].inputs] == ["x", "b"]
 
