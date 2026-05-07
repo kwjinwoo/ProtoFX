@@ -130,10 +130,10 @@ path end-to-end with `If`.
 | Status | Item |
 |--------|------|
 | ✅ | Record the accepted control-flow subgraph representation and validation boundary in an ADR and derived `docs/dev/` specifications |
-| 📋 | Extend the importer to normalize and import ONNX `GRAPH` / `GRAPHS` attributes as child subgraphs |
-| 📋 | Extend IR validation to preserve and validate child-graph ownership, branch signatures, and nested graph invariants |
-| 📋 | Add end-to-end `If` support from ONNX import through FX emission |
-| 📋 | Add importer, parity, and downstream validation coverage for `If`, including representative `torch.compile` smoke coverage |
+| ✅ | Harden generic importer support and coverage for ONNX `GRAPH` / `GRAPHS` child-subgraph normalization |
+| ✅ | Extend IR validation to preserve and validate child-graph ownership, branch signatures, and nested graph invariants |
+| ✅ | Add end-to-end `If` support from ONNX import through FX emission |
+| ✅ | Add importer, parity, and downstream validation coverage for `If`, including representative `torch.compile` smoke coverage |
 
 ---
 
