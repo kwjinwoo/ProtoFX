@@ -1084,7 +1084,7 @@ class TestGenericChildSubgraphImport:
         assert [value.name for value in subgraphs[0].inputs] == ["x", "b"]
         assert [value.name for value in subgraphs[1].inputs] == ["x", "b"]
 
-    def test_graphs_attr_inconsistent_capture_interface_raises(self) -> None:
+    def test_graphs_attr_allows_child_local_capture_interfaces(self) -> None:
         x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
         b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [2])
         y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
@@ -1112,7 +1112,33 @@ class TestGenericChildSubgraphImport:
             opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("custom.domain", 1)],
         )
 
-        with np.testing.assert_raises_regex(ValueError, "inconsistent child-graph capture interface"):
+        imported = import_model(model)
+        node_ir = imported.nodes[0]
+        subgraphs = node_ir.subgraphs["regions"]
+
+        assert [value.name for value in node_ir.inputs] == []
+        assert [value.name for value in subgraphs[0].inputs] == ["x"]
+        assert [value.name for value in subgraphs[1].inputs] == ["b"]
+
+    def test_generic_child_graph_unresolved_capture_fails_locally(self) -> None:
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        child_node = helper.make_node("Add", ["x", "missing_capture"], ["child_out"])
+        child_graph = helper.make_graph(
+            [child_node],
+            "body",
+            [],
+            [helper.make_tensor_value_info("child_out", TensorProto.FLOAT, [2])],
+        )
+        node = helper.make_node("CustomGraphOp", [], ["y"], body=child_graph, domain="custom.domain")
+        graph = helper.make_graph([node], "root", [x], [y])
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("custom.domain", 1)],
+        )
+
+        with np.testing.assert_raises_regex(ValueError, "unresolved input"):
             import_model(model)
 
 
