@@ -459,7 +459,7 @@ def _normalize_generic_child_capture_order(
     value_registry: dict[str, Value],
     child_capture_entries: list[tuple[Graph, list[str]]],
 ) -> list[str]:
-    """Normalize generic child-graph captures to one shared interface.
+    """Normalize each generic child-graph capture order against parent registry.
 
     Args:
         node_proto: Source node carrying GRAPH/GRAPHS attributes.
@@ -467,34 +467,24 @@ def _normalize_generic_child_capture_order(
         child_capture_entries: Child graphs paired with their materialized captures.
 
     Returns:
-        Ordered capture names to append to the parent node interface.
+        Always returns an empty list because generic capture materialization is child-local only.
     """
-    if not child_capture_entries:
-        return []
-
     owner_label = f"node {node_proto.name or node_proto.op_type!r}"
-    normalized_sets = [set(capture_names) for _child_graph, capture_names in child_capture_entries]
-    expected_capture_set = normalized_sets[0]
-    for capture_set in normalized_sets[1:]:
-        if capture_set != expected_capture_set:
-            msg = f"{owner_label}: inconsistent child-graph capture interface"
-            raise ValueError(msg)
-
-    normalized_capture_order = [name for name in value_registry if name in expected_capture_set]
-    unresolved_capture_names = sorted(expected_capture_set - set(normalized_capture_order))
-    if unresolved_capture_names:
-        unresolved_name = unresolved_capture_names[0]
-        msg = f"{owner_label}: unresolved capture {unresolved_name!r}"
-        raise ValueError(msg)
-
     for child_graph, child_capture_names in child_capture_entries:
+        capture_name_set = set(child_capture_names)
+        normalized_capture_order = [name for name in value_registry if name in capture_name_set]
+        unresolved_capture_names = sorted(capture_name_set - set(normalized_capture_order))
+        if unresolved_capture_names:
+            unresolved_name = unresolved_capture_names[0]
+            msg = f"{owner_label}: unresolved capture {unresolved_name!r}"
+            raise ValueError(msg)
         _reorder_child_capture_inputs(
             child_graph,
             child_capture_names=child_capture_names,
             normalized_capture_order=normalized_capture_order,
             owner_label=owner_label,
         )
-    return normalized_capture_order
+    return []
 
 
 def _import_nodes(
