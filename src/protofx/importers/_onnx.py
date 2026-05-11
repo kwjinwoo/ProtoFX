@@ -571,37 +571,46 @@ def _normalize_loop_capture_order(
         )
         raise ValueError(msg)
 
-    iteration_value = next(
-        (
-            value
-            for value in non_capture_inputs
-            if value.tensor_type.dtype == DType.INT64 and value.tensor_type.shape == ()
-        ),
-        None,
-    )
-    if iteration_value is None:
+    iteration_candidates = [
+        value
+        for value in non_capture_inputs
+        if value.tensor_type.dtype == DType.INT64 and value.tensor_type.shape == ()
+    ]
+    if not iteration_candidates:
         msg = f"{owner_label}: body interface mismatch (missing iteration counter input)"
         raise ValueError(msg)
+    if len(iteration_candidates) > 1:
+        msg = f"{owner_label}: ambiguous iteration input in body interface"
+        raise ValueError(msg)
+    iteration_value = iteration_candidates[0]
 
     remaining = [value for value in non_capture_inputs if value is not iteration_value]
     cond_reference = node_inputs[1] if len(node_inputs) > 1 else None
     if cond_reference is not None and cond_reference.tensor_type.dtype is not None:
-        cond_value = next((value for value in remaining if _matches_tensor_type(value, cond_reference)), None)
+        cond_candidates = [value for value in remaining if _matches_tensor_type(value, cond_reference)]
     else:
-        cond_value = next((value for value in remaining if value.tensor_type.dtype == DType.BOOL), None)
-    if cond_value is None:
+        cond_candidates = [value for value in remaining if value.tensor_type.dtype == DType.BOOL]
+    if not cond_candidates:
         msg = f"{owner_label}: body interface mismatch (missing incoming condition input)"
         raise ValueError(msg)
+    if len(cond_candidates) > 1:
+        msg = f"{owner_label}: ambiguous incoming condition input in body interface"
+        raise ValueError(msg)
+    cond_value = cond_candidates[0]
 
     remaining = [value for value in remaining if value is not cond_value]
     carried_inputs: list[Value] = []
     for carried_slot in range(carried_count):
         parent_slot = carried_slot + 2
         parent_value = node_inputs[parent_slot]
-        matched = next((value for value in remaining if _matches_tensor_type(value, parent_value)), None)
-        if matched is None:
+        carried_candidates = [value for value in remaining if _matches_tensor_type(value, parent_value)]
+        if not carried_candidates:
             msg = f"{owner_label}: body interface mismatch at carried input {carried_slot}"
             raise ValueError(msg)
+        if len(carried_candidates) > 1:
+            msg = f"{owner_label}: ambiguous carried input mapping at slot {carried_slot}"
+            raise ValueError(msg)
+        matched = carried_candidates[0]
         carried_inputs.append(matched)
         remaining = [value for value in remaining if value is not matched]
 
