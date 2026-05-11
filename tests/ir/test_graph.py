@@ -1211,3 +1211,12 @@ class TestGraphLoopValidation:
         graph, loop_node = self._make_loop_graph()
         graph.set_node_inputs(loop_node, [graph.add_sentinel(), *loop_node.inputs[1:]])
         graph.validate()
+
+    def test_validate_rejects_swapped_loop_iteration_and_cond_slots(self) -> None:
+        """Loop validation must reject swapped body slot-0/slot-1 interfaces."""
+        graph, loop_node = self._make_loop_graph()
+        loop_body = loop_node.subgraphs["body"]
+        loop_body.inputs = [loop_body.inputs[1], loop_body.inputs[0], *loop_body.inputs[2:]]
+
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
