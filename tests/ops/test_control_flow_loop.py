@@ -8,6 +8,8 @@ from onnx import TensorProto, helper
 
 from protofx.emitters import emit_graph
 from protofx.importers import import_model
+from protofx.ir import DType, TensorType
+from protofx.ir.graph import Graph
 
 
 def _make_loop_model(
@@ -93,12 +95,10 @@ class TestLoopHandler:
         "loop_inputs",
         [
             ["", "cond", "state_init"],
-            ["M", "", "state_init"],
-            ["", "", "state_init"],
         ],
     )
-    def test_loop_accepts_omitted_m_and_cond_sentinel_combinations(self, loop_inputs: list[str]) -> None:
-        """Loop lowering must accept omitted M/cond sentinel combinations."""
+    def test_loop_accepts_omitted_m_with_explicit_cond(self, loop_inputs: list[str]) -> None:
+        """Loop lowering must accept omitted M when cond is explicit."""
         model = _make_loop_model(loop_inputs=loop_inputs, cond_mode="toggle")
         gm = emit_graph(import_model(model))
 
@@ -109,3 +109,40 @@ class TestLoopHandler:
             torch.tensor([2.0, 0.5]),
         )
         torch.testing.assert_close(result, torch.tensor([3.0, -0.5]))
+
+    def test_loop_rejects_missing_cond_input_during_emission(self) -> None:
+        """Loop handler must reject invalid IR with omitted cond sentinels."""
+        graph = Graph(name="main")
+        max_trip_count = graph.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=()), name="M")
+        state_init = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="state_init")
+        capture = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="x")
+
+        body = Graph(name="body", parent=graph)
+        iter_count = body.add_input(tensor_type=TensorType(dtype=DType.INT64, shape=()), name="iter")
+        body_cond = body.add_input(tensor_type=TensorType(dtype=DType.BOOL, shape=()), name="cond_in")
+        body_state = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="state_in")
+        body_capture = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="x")
+        _ = iter_count
+
+        cond_out = body.make_node(
+            op_type="Identity",
+            inputs=[body_cond],
+            output_types=[TensorType(dtype=DType.BOOL, shape=())],
+        )
+        state_out = body.make_node(
+            op_type="Add",
+            inputs=[body_state, body_capture],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        body.set_graph_outputs([cond_out.outputs[0], state_out.outputs[0]])
+
+        loop = graph.make_node(
+            op_type="Loop",
+            inputs=[max_trip_count, graph.add_sentinel(), state_init, capture],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+            subgraphs={"body": body},
+        )
+        graph.set_graph_outputs([loop.outputs[0]])
+
+        with pytest.raises(ValueError, match="Loop: missing cond input"):
+            emit_graph(graph)
