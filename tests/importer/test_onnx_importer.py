@@ -1056,9 +1056,21 @@ class TestLoopImport:
         assert [value.name for value in loop_node.inputs] == ["M", "cond", "state_init", "x"]
         assert [value.name for value in loop_body.inputs] == ["iter", "cond_in", "state_in", "x"]
 
-    def test_loop_preserves_omitted_optional_input_sentinels(self) -> None:
+    def test_loop_rejects_omitted_cond_input(self) -> None:
         model = self._make_loop_model(
             loop_inputs=["", "", "state_init"],
+            body_inputs=[
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+            ],
+        )
+        with np.testing.assert_raises_regex(ValueError, "Loop node .* omitted cond input is unsupported"):
+            import_model(model)
+
+    def test_loop_preserves_omitted_m_with_explicit_cond(self) -> None:
+        model = self._make_loop_model(
+            loop_inputs=["", "cond", "state_init"],
             body_inputs=[
                 helper.make_tensor_value_info("iter", TensorProto.INT64, []),
                 helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
@@ -1069,7 +1081,7 @@ class TestLoopImport:
         loop_node = graph.nodes[0]
 
         assert loop_node.inputs[0].kind == ValueKind.SENTINEL
-        assert loop_node.inputs[1].kind == ValueKind.SENTINEL
+        assert loop_node.inputs[1].name == "cond"
         assert [value.name for value in loop_node.inputs[2:]] == ["state_init", "x"]
 
     def test_loop_reorders_body_inputs_to_normalized_interface(self) -> None:
