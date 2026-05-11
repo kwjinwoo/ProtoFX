@@ -80,7 +80,10 @@ class TestLoopHandler:
         gm = emit_graph(import_model(model))
 
         while_node = next(
-            node for node in gm.graph.nodes if node.op == "call_function" and node.target is torch.while_loop
+            node
+            for node in gm.graph.nodes
+            if node.op == "call_function"
+            and getattr(node.target, "__name__", "") in {"_call_torch_while_loop", "while_loop"}
         )
         loop_state = while_node.args[2]
         assert isinstance(loop_state, tuple)
