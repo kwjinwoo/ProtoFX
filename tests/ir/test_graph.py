@@ -1198,3 +1198,16 @@ class TestGraphLoopValidation:
         carried_value.tensor_type = TensorType(dtype=DType.INT64, shape=(2,))
         with pytest.raises(ValueError, match="Loop"):
             graph.validate()
+
+    def test_validate_fails_when_loop_cond_input_is_omitted(self) -> None:
+        """Loop validation must reject omitted optional cond sentinels."""
+        graph, loop_node = self._make_loop_graph()
+        graph.set_node_inputs(loop_node, [loop_node.inputs[0], graph.add_sentinel(), *loop_node.inputs[2:]])
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
+
+    def test_validate_accepts_omitted_m_with_explicit_cond(self) -> None:
+        """Loop validation keeps omitted M support when cond is explicit."""
+        graph, loop_node = self._make_loop_graph()
+        graph.set_node_inputs(loop_node, [graph.add_sentinel(), *loop_node.inputs[1:]])
+        graph.validate()
