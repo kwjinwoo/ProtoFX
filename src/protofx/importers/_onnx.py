@@ -18,7 +18,7 @@ from protofx.ir.graph import Graph
 from protofx.ir.node import AttributeValue
 from protofx.ir.shape import Shape
 from protofx.ir.tensor_type import TensorType
-from protofx.ir.value import Value
+from protofx.ir.value import Value, ValueKind
 from protofx.utils.dtype import onnx_dtype_to_ir
 
 # ------------------------------------------------------------------
@@ -558,6 +558,12 @@ def _normalize_loop_capture_order(
     carried_count = len(node_proto.output)
     expected_non_capture = 2 + carried_count
     owner_label = f"Loop node {node_proto.name or node_proto.op_type!r}"
+    if len(node_inputs) < 2:
+        msg = f"{owner_label}: expected explicit M and cond inputs"
+        raise ValueError(msg)
+    if node_inputs[1].kind == ValueKind.SENTINEL:
+        msg = f"{owner_label}: omitted cond input is unsupported in MVP"
+        raise ValueError(msg)
     if len(non_capture_inputs) != expected_non_capture:
         msg = (
             f"{owner_label}: body interface mismatch "
