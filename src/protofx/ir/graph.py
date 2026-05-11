@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from protofx.ir.dtype import DType
 from protofx.ir.node import AttributeValue, Node, SubgraphValue
 from protofx.ir.tensor_type import TensorType
 from protofx.ir.value import Value, ValueKind
@@ -623,6 +624,26 @@ class Graph:
                     f"(body={len(body.outputs)}, expected={expected_body_output_count}); "
                     "scan outputs are unsupported"
                 )
+                raise ValueError(msg)
+
+            iteration_input = body.inputs[0]
+            if iteration_input.tensor_type.dtype is not None and iteration_input.tensor_type.dtype != DType.INT64:
+                msg = f"node {node.id!r} (Loop): body input 0 must be iteration counter (INT64 scalar)"
+                raise ValueError(msg)
+            if self._shapes_provably_mismatch(iteration_input.tensor_type.shape, ()):
+                msg = f"node {node.id!r} (Loop): body input 0 must be iteration counter (INT64 scalar)"
+                raise ValueError(msg)
+
+            body_cond_input = body.inputs[1]
+            if (
+                cond_input.tensor_type.dtype is not None
+                and body_cond_input.tensor_type.dtype is not None
+                and cond_input.tensor_type.dtype != body_cond_input.tensor_type.dtype
+            ):
+                msg = f"node {node.id!r} (Loop): body input 1 must be incoming condition"
+                raise ValueError(msg)
+            if self._shapes_provably_mismatch(cond_input.tensor_type.shape, body_cond_input.tensor_type.shape):
+                msg = f"node {node.id!r} (Loop): body input 1 must be incoming condition"
                 raise ValueError(msg)
 
             cond_output = body.outputs[0]
