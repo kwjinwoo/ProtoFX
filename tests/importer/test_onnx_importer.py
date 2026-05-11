@@ -1098,6 +1098,35 @@ class TestLoopImport:
 
         assert [value.name for value in loop_body.inputs] == ["iter", "cond_in", "state_in", "x"]
 
+    def test_loop_rejects_ambiguous_iteration_and_carried_metadata(self) -> None:
+        M = helper.make_tensor_value_info("M", TensorProto.INT64, [])
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        state_init = helper.make_tensor_value_info("state_init", TensorProto.INT64, [])
+        y = helper.make_tensor_value_info("y", TensorProto.INT64, [])
+
+        body_graph = helper.make_graph(
+            [
+                helper.make_node("Identity", ["cond_in"], ["cond_out"]),
+                helper.make_node("Identity", ["state_in"], ["state_out"]),
+            ],
+            "body",
+            [
+                helper.make_tensor_value_info("state_in", TensorProto.INT64, []),
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+            ],
+            [
+                helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_out", TensorProto.INT64, []),
+            ],
+        )
+        loop_node = helper.make_node("Loop", ["M", "cond", "state_init"], ["y"], body=body_graph)
+        graph = helper.make_graph([loop_node], "loop_graph", [M, cond, state_init], [y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+        with np.testing.assert_raises_regex(ValueError, "Loop node .* ambiguous"):
+            import_model(model)
+
     def test_loop_scan_outputs_are_rejected(self) -> None:
         model = self._make_loop_model(
             loop_inputs=["M", "cond", "state_init"],
