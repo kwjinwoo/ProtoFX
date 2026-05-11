@@ -181,6 +181,9 @@ def _loop(
 
     max_trip_count = args[0]
     initial_condition = args[1]
+    if initial_condition is None:
+        msg = "Loop: missing cond input"
+        raise ValueError(msg)
     carried_inputs = args[2 : 2 + carried_count]
     for slot, carried_input in enumerate(carried_inputs):
         if carried_input is None:
@@ -201,11 +204,7 @@ def _loop(
     cond_fn = fx_graph.call_function(_make_loop_cond_fn, args=(max_trip_count,))
     body_fn = fx_graph.call_function(_make_loop_body_fn, args=(body_callable, tuple(captures)))
     iteration0 = fx_graph.call_function(torch.tensor, args=(0,), kwargs={"dtype": torch.int64})
-    cond0 = (
-        initial_condition
-        if initial_condition is not None
-        else fx_graph.call_function(torch.tensor, args=(True,), kwargs={"dtype": torch.bool})
-    )
+    cond0 = initial_condition
     loop_state = (iteration0, cond0, *carried_inputs)
     final_state = fx_graph.call_function(_call_torch_while_loop, args=(cond_fn, body_fn, loop_state))
     return [fx_graph.call_function(operator.getitem, args=(final_state, slot + 2)) for slot in range(carried_count)]
