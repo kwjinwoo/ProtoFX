@@ -602,6 +602,11 @@ class Graph:
                 msg = f"node {node.id!r} (Loop): expected at least M and cond inputs"
                 raise ValueError(msg)
 
+            cond_input = node.inputs[1]
+            if cond_input.kind == ValueKind.SENTINEL:
+                msg = f"node {node.id!r} (Loop): omitted cond input is unsupported in MVP"
+                raise ValueError(msg)
+
             carried_count = len(node.outputs)
             expected_body_input_count = len(node.inputs)
             if len(body.inputs) != expected_body_input_count:
@@ -620,7 +625,6 @@ class Graph:
                 )
                 raise ValueError(msg)
 
-            cond_input = node.inputs[1]
             cond_output = body.outputs[0]
             if (
                 cond_input.tensor_type.dtype is not None
