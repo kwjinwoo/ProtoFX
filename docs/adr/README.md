@@ -74,3 +74,4 @@ Start new ADRs from `docs/adr/TEMPLATE.md`.
 | 0006 | Coverage visibility via support matrix | Superseded by ADR-0007 |
 | 0007 | Agent-facing documentation entrypoint and representative support summary | Accepted |
 | 0008 | Control-flow subgraphs and If MVP | Accepted |
+| 0009 | Loop loop-carried state and while_loop lowering | Accepted |

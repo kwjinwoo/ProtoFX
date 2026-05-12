@@ -2,7 +2,7 @@
 schema_version: 1
 doc_kind: dev
 title: IR pipeline contracts
-summary: Normative importer, validation, and emitter boundaries for ProtoFX IR, including recursive child-subgraph handling and handler-driven control-flow lowering.
+summary: Normative importer, validation, and emitter boundaries for ProtoFX IR, including recursive child-subgraph handling and handler-driven control-flow lowering for `If` and Loop carry-state MVP.
 authority: authoritative
 keywords: [ir, importer, emitter, validation, control-flow]
 source_of_truth:
@@ -16,6 +16,7 @@ related_docs:
   - docs/adr/0001-thin-graph-owned-ir.md
   - docs/adr/0005-downstream-tooling-validation-boundary.md
   - docs/adr/0008-control-flow-subgraphs-and-if-mvp.md
+  - docs/adr/0009-loop-loop-carried-state-and-while-loop-lowering.md
   - docs/dev/ir/control-flow.md
 ---
 
@@ -30,7 +31,7 @@ This document records the importer, validation, and emitter boundaries around th
 ## Scope
 
 This contract covers the normalized pipeline from ONNX import through IR validation to FX emission, including the
-control-flow extension for child subgraphs and `If` MVP.
+control-flow extension for child subgraphs, the `If` MVP, and the Loop loop-carried-state MVP.
 
 <!-- section:contract -->
 ## Contract
@@ -55,6 +56,8 @@ It must:
 - normalize scalar and list-like attributes into Python-native values
 - normalize control-flow `GRAPH` and `GRAPHS` attributes into dedicated child subgraphs
 - normalize constants, initializers, omitted optional inputs, and outer-scope capture into explicit IR forms
+- normalize Loop-specific body captures and optional control inputs into explicit IR forms under the accepted Loop
+  contract
 - preserve source provenance needed for diagnostics
 - produce graph-valid IR or fail early
 
@@ -71,6 +74,7 @@ Validation is responsible for:
 - acyclicity and dependency-safe traversal via `Graph.topological_sort()`
 - required attribute and child-subgraph normalized form
 - recursive child-graph validation
+- Loop body interface and loop-carried state consistency
 - shape and dtype constraints when enough metadata is available
 
 Unknown metadata remains explicit and valid when the source model does not provide enough information.
@@ -106,6 +110,8 @@ Unregistered ops raise `NotImplementedError`.
 - `Graph.topological_sort()` is authoritative within one graph boundary and does not flatten parent and child graphs.
 - Recursive lowering support does not change the handler registry as the semantic owner of operator-specific logic.
 - Branch output arity for `If` must be validated before successful emission.
+- Loop body carried-state arity must match the parent Loop output contract in the current milestone.
+- Loop MVP lowering requires an explicit parent `cond` input.
 
 <!-- section:failure-semantics -->
 ## Failure Semantics
@@ -113,6 +119,8 @@ Unregistered ops raise `NotImplementedError`.
 - Invalid normalized IR must fail before emission rather than being deferred to FX runtime behavior.
 - Unsupported control-flow operators or unsupported normalized forms remain explicit `NotImplementedError` cases.
 - Proven child-graph interface mismatches are validation failures.
+- Unsupported Loop scan outputs remain explicit failures in the current milestone.
+- Unsupported omitted-`cond` Loop forms remain explicit failures in the current milestone.
 - Metadata that cannot be proven from the model remains unknown rather than being guessed.
 
 <!-- section:non-goals -->
@@ -121,11 +129,11 @@ Unregistered ops raise `NotImplementedError`.
 - A full compiler optimization framework
 - Backend-specific lowering policy embedded in the IR core
 - A flattened global traversal order across parent and child graphs
-- `Loop` and `Scan` semantics in the `If` MVP milestone
+- `Scan` semantics and Loop scan-output semantics in the Loop carry-state MVP
 
 <!-- section:references -->
 ## References
 
 - Related code: `src/protofx/importers/_onnx.py`, `src/protofx/emitters/_fx.py`, `src/protofx/ops/_registry.py`
 - Related tests: `tests/importer/`, `tests/emitter/`, `tests/parity/`, `tests/downstream/`
-- Related ADRs: `docs/adr/0001-thin-graph-owned-ir.md`, `docs/adr/0005-downstream-tooling-validation-boundary.md`, `docs/adr/0008-control-flow-subgraphs-and-if-mvp.md`
+- Related ADRs: `docs/adr/0001-thin-graph-owned-ir.md`, `docs/adr/0005-downstream-tooling-validation-boundary.md`, `docs/adr/0008-control-flow-subgraphs-and-if-mvp.md`, `docs/adr/0009-loop-loop-carried-state-and-while-loop-lowering.md`
