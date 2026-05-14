@@ -1141,6 +1141,41 @@ class TestLoopImport:
         with np.testing.assert_raises_regex(ValueError, "scan outputs are unsupported"):
             import_model(model)
 
+    def test_loop_normalizes_explicit_capture_order_from_parent_registry(self) -> None:
+        M = helper.make_tensor_value_info("M", TensorProto.INT64, [])
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        state_init = helper.make_tensor_value_info("state_init", TensorProto.FLOAT, [2])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2])
+
+        body_graph = helper.make_graph(
+            [
+                helper.make_node("Identity", ["cond_in"], ["cond_out"]),
+                helper.make_node("Add", ["state_in", "x"], ["sum_state"]),
+                helper.make_node("Add", ["sum_state", "b"], ["state_out"]),
+            ],
+            "body",
+            [
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+            ],
+            [
+                helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_out", TensorProto.FLOAT, [2]),
+            ],
+        )
+        loop_node = helper.make_node("Loop", ["M", "cond", "state_init"], ["y"], body=body_graph)
+        graph = helper.make_graph([loop_node], "loop_graph", [M, cond, state_init, x, b], [y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+        imported = import_model(model)
+        imported_loop = imported.nodes[0]
+        imported_body = imported_loop.subgraphs["body"]
+
+        assert [value.name for value in imported_loop.inputs] == ["M", "cond", "state_init", "x", "b"]
+        assert [value.name for value in imported_body.inputs] == ["iter", "cond_in", "state_in", "x", "b"]
+
 
 class TestGenericChildSubgraphImport:
     """Verify generic GRAPH/GRAPHS child-subgraph normalization at import time."""
