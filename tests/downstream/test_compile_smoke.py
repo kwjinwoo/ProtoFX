@@ -116,6 +116,71 @@ def _make_if_model() -> helper.ModelProto:
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
 
 
+def _make_loop_model() -> helper.ModelProto:
+    """Build ONNX model: (M, cond, state_init, X) → Loop → Y."""
+    m_input = helper.make_tensor_value_info("M", TensorProto.INT64, [])
+    cond_input = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+    state_init = helper.make_tensor_value_info("state_init", TensorProto.FLOAT, [2])
+    capture = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2])
+    output = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2])
+
+    body_graph = helper.make_graph(
+        [
+            helper.make_node("Identity", ["cond_in"], ["cond_out"]),
+            helper.make_node("Add", ["state_in", "X"], ["state_out"]),
+        ],
+        "body",
+        [
+            helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+            helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+        ],
+        [
+            helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("state_out", TensorProto.FLOAT, [2]),
+        ],
+    )
+    loop_node = helper.make_node("Loop", ["M", "cond", "state_init"], ["Y"], body=body_graph)
+    graph = helper.make_graph([loop_node], "loop_graph", [m_input, cond_input, state_init, capture], [output])
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+
+def _make_scan_model() -> helper.ModelProto:
+    """Build ONNX model: (state_init, scan_in, X) → Scan → (final_state, scanned)."""
+    state_init = helper.make_tensor_value_info("state_init", TensorProto.FLOAT, [])
+    scan_in = helper.make_tensor_value_info("scan_in", TensorProto.FLOAT, [3, 2])
+    capture = helper.make_tensor_value_info("X", TensorProto.FLOAT, [])
+    final_state = helper.make_tensor_value_info("final_state", TensorProto.FLOAT, [])
+    scanned = helper.make_tensor_value_info("scanned", TensorProto.FLOAT, [3, 2])
+
+    body_graph = helper.make_graph(
+        [
+            helper.make_node("ReduceSum", ["scan_step"], ["scan_reduced"], keepdims=0),
+            helper.make_node("Add", ["state_in", "scan_reduced"], ["state_mid"]),
+            helper.make_node("Add", ["state_mid", "X"], ["state_out"]),
+            helper.make_node("Identity", ["scan_step"], ["scan_out"]),
+        ],
+        "body",
+        [
+            helper.make_tensor_value_info("state_in", TensorProto.FLOAT, []),
+            helper.make_tensor_value_info("scan_step", TensorProto.FLOAT, [2]),
+        ],
+        [
+            helper.make_tensor_value_info("state_out", TensorProto.FLOAT, []),
+            helper.make_tensor_value_info("scan_out", TensorProto.FLOAT, [2]),
+        ],
+    )
+    scan_node = helper.make_node(
+        "Scan",
+        ["state_init", "scan_in"],
+        ["final_state", "scanned"],
+        num_scan_inputs=1,
+        body=body_graph,
+    )
+    graph = helper.make_graph([scan_node], "scan_graph", [state_init, scan_in, capture], [final_state, scanned])
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -199,4 +264,35 @@ class TestCompileSmokeIf:
         assert_compile_parity(
             _make_if_model(),
             {"cond": np.asarray(condition, dtype=np.bool_), "X": x},
+        )
+
+
+class TestCompileSmokeLoop:
+    """torch.compile parity for Loop graph."""
+
+    def test_compile_parity(self) -> None:
+        """Compiled Loop graph must match eager output."""
+        assert_compile_parity(
+            _make_loop_model(),
+            {
+                "M": np.asarray(3, dtype=np.int64),
+                "cond": np.asarray(True, dtype=np.bool_),
+                "state_init": np.asarray([1.0, -1.0], dtype=np.float32),
+                "X": np.asarray([2.0, 0.5], dtype=np.float32),
+            },
+        )
+
+
+class TestCompileSmokeScan:
+    """torch.compile parity for Scan graph."""
+
+    def test_compile_parity(self) -> None:
+        """Compiled Scan graph must match eager output."""
+        assert_compile_parity(
+            _make_scan_model(),
+            {
+                "state_init": np.asarray(0.0, dtype=np.float32),
+                "scan_in": np.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
+                "X": np.asarray(1.0, dtype=np.float32),
+            },
         )
