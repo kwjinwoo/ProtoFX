@@ -139,14 +139,14 @@ path end-to-end with `If`.
 
 ## Milestone 9 — Loop and Scan Expansion
 
-Build on the accepted control-flow subgraph contract to add iterative control-flow ops with explicit loop-state and
-scanned-output coverage.
+Build on the accepted control-flow subgraph contract to close the Loop MVP status, add Scan MVP semantics for default
+axis-0 forward scanned outputs, and prove representative parity plus downstream validation coverage.
 
 | Status | Item |
 |--------|------|
-| 📋 | Add `Loop` support, including loop-carried state import and emission semantics under the accepted control-flow contract |
-| 📋 | Add `Scan` support, including scanned-output import and emission semantics under the accepted control-flow contract |
-| 📋 | Add importer, parity, and downstream validation coverage for `Loop` and `Scan` |
+| ✅ | Add `Loop` support, including loop-carried state import and emission semantics under the accepted control-flow contract |
+| ✅ | Add `Scan` MVP support, including explicit state, scanned-output, and capture semantics under the accepted control-flow contract |
+| ✅ | Add representative importer, parity, and downstream (`torch.compile` / `torch.export`) validation coverage for `Loop` and `Scan` |
 
 ---
 
