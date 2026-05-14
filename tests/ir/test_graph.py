@@ -1220,3 +1220,99 @@ class TestGraphLoopValidation:
 
         with pytest.raises(ValueError, match="Loop"):
             graph.validate()
+
+
+class TestGraphScanValidation:
+    """Tests for Scan-specific body and state/scanned-output validation contracts."""
+
+    def _make_scan_graph(self) -> tuple[Graph, object]:
+        graph = Graph(name="main")
+        state0 = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)), name="s0")
+        state1 = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), name="s1")
+        scan0 = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 2)), name="scan0")
+        scan1 = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 3)), name="scan1")
+        capture = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), name="capture")
+
+        body = Graph(name="body", parent=graph)
+        body_state0 = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4,)), name="state0_in")
+        body_state1 = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), name="state1_in")
+        body_scan0 = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="scan0_step")
+        body_scan1 = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3,)), name="scan1_step")
+        body_capture = body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(5,)), name="capture")
+
+        state0_out = body.make_node(
+            op_type="Add",
+            inputs=[body_state0, body_scan0],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(4,))],
+        )
+        state1_mid = body.make_node(
+            op_type="Add",
+            inputs=[body_state1, body_scan1],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(5,))],
+        )
+        state1_out = body.make_node(
+            op_type="Add",
+            inputs=[state1_mid.outputs[0], body_capture],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(5,))],
+        )
+        scan0_out = body.make_node(
+            op_type="Identity",
+            inputs=[body_scan0],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(2,))],
+        )
+        scan1_out = body.make_node(
+            op_type="Identity",
+            inputs=[body_scan1],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(3,))],
+        )
+        body.set_graph_outputs(
+            [state0_out.outputs[0], state1_out.outputs[0], scan0_out.outputs[0], scan1_out.outputs[0]]
+        )
+
+        scan_node = graph.make_node(
+            op_type="Scan",
+            inputs=[state0, state1, scan0, scan1, capture],
+            output_types=[
+                TensorType(dtype=DType.FLOAT32, shape=(4,)),
+                TensorType(dtype=DType.FLOAT32, shape=(5,)),
+                TensorType(dtype=DType.FLOAT32, shape=(3, 2)),
+                TensorType(dtype=DType.FLOAT32, shape=(3, 3)),
+            ],
+            attributes={"num_scan_inputs": 2},
+            subgraphs={"body": body},
+        )
+        graph.set_graph_outputs(list(scan_node.outputs))
+        return graph, scan_node
+
+    def test_validate_fails_when_scan_body_is_missing(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        scan_node.subgraphs = {}
+        with pytest.raises(ValueError, match="Scan"):
+            graph.validate()
+
+    def test_validate_fails_for_scan_body_input_arity_mismatch(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        body = scan_node.subgraphs["body"]
+        body.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2,)), name="extra")
+        with pytest.raises(ValueError, match="Scan"):
+            graph.validate()
+
+    def test_validate_fails_for_scan_body_output_arity_mismatch(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        body = scan_node.subgraphs["body"]
+        body.set_graph_outputs(body.outputs[:-1])
+        with pytest.raises(ValueError, match="Scan"):
+            graph.validate()
+
+    def test_validate_fails_for_scan_state_dtype_mismatch(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        body = scan_node.subgraphs["body"]
+        body.outputs[0].tensor_type = TensorType(dtype=DType.INT64, shape=(2,))
+        with pytest.raises(ValueError, match="Scan"):
+            graph.validate()
+
+    def test_validate_fails_for_scan_output_shape_mismatch(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        scan_node.outputs[2].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(3, 3))
+        with pytest.raises(ValueError, match="Scan"):
+            graph.validate()

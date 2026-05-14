@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import onnx
+import pytest
 from onnx import TensorProto, helper
 
 from protofx.importers import import_model
@@ -1175,6 +1176,134 @@ class TestLoopImport:
 
         assert [value.name for value in imported_loop.inputs] == ["M", "cond", "state_init", "x", "b"]
         assert [value.name for value in imported_body.inputs] == ["iter", "cond_in", "state_in", "x", "b"]
+
+
+class TestScanImport:
+    """Verify Scan-specific importer normalization and MVP rejection behavior."""
+
+    @staticmethod
+    def _make_scan_model(
+        *,
+        body_inputs: list[onnx.ValueInfoProto],
+        body_outputs: list[onnx.ValueInfoProto],
+        state_inputs: list[str],
+        scan_inputs: list[str],
+        body_nodes: list[onnx.NodeProto] | None = None,
+        attrs: dict[str, list[int] | int] | None = None,
+    ) -> onnx.ModelProto:
+        s0 = helper.make_tensor_value_info("s0", TensorProto.FLOAT, [4])
+        s1 = helper.make_tensor_value_info("s1", TensorProto.FLOAT, [5])
+        scan0 = helper.make_tensor_value_info("scan0", TensorProto.FLOAT, [3, 2])
+        scan1 = helper.make_tensor_value_info("scan1", TensorProto.FLOAT, [3, 3])
+        capture_x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        capture_b = helper.make_tensor_value_info("b", TensorProto.FLOAT, [5])
+
+        y0 = helper.make_tensor_value_info("y0", TensorProto.FLOAT, [4])
+        y1 = helper.make_tensor_value_info("y1", TensorProto.FLOAT, [5])
+        z0 = helper.make_tensor_value_info("z0", TensorProto.FLOAT, [3, 2])
+        z1 = helper.make_tensor_value_info("z1", TensorProto.FLOAT, [3, 3])
+        body_graph = helper.make_graph(
+            body_nodes
+            or [
+                helper.make_node("Add", ["state0_in", "scan0_step"], ["state0_out"]),
+                helper.make_node("Add", ["state1_in", "scan1_step"], ["state1_mid"]),
+                helper.make_node("Add", ["state1_mid", "b"], ["state1_out"]),
+                helper.make_node("Identity", ["scan0_step"], ["scan0_out"]),
+                helper.make_node("Identity", ["scan1_step"], ["scan1_out"]),
+            ],
+            "body",
+            body_inputs,
+            body_outputs,
+        )
+        scan_attrs = {"num_scan_inputs": len(scan_inputs)}
+        if attrs is not None:
+            scan_attrs.update(attrs)
+        scan_node = helper.make_node(
+            "Scan",
+            [*state_inputs, *scan_inputs],
+            ["y0", "y1", "z0", "z1"],
+            body=body_graph,
+            **scan_attrs,
+        )
+        graph = helper.make_graph(
+            [scan_node], "scan_graph", [s0, s1, scan0, scan1, capture_x, capture_b], [y0, y1, z0, z1]
+        )
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+    def test_scan_normalizes_parent_and_body_interfaces_with_plural_families(self) -> None:
+        model = self._make_scan_model(
+            state_inputs=["s0", "s1"],
+            scan_inputs=["scan0", "scan1"],
+            body_inputs=[
+                helper.make_tensor_value_info("scan1_step", TensorProto.FLOAT, [3]),
+                helper.make_tensor_value_info("state0_in", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("scan0_step", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("state1_in", TensorProto.FLOAT, [5]),
+            ],
+            body_outputs=[
+                helper.make_tensor_value_info("state1_out", TensorProto.FLOAT, [5]),
+                helper.make_tensor_value_info("scan0_out", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("state0_out", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("scan1_out", TensorProto.FLOAT, [3]),
+            ],
+        )
+        graph = import_model(model)
+        scan_node = graph.nodes[0]
+        scan_body = scan_node.subgraphs["body"]
+
+        assert [value.name for value in scan_node.inputs] == ["s0", "s1", "scan0", "scan1", "b"]
+        assert [value.name for value in scan_node.outputs] == ["y0", "y1", "z0", "z1"]
+        assert [value.name for value in scan_body.inputs] == ["state0_in", "state1_in", "scan0_step", "scan1_step", "b"]
+        assert [value.name for value in scan_body.outputs] == ["state0_out", "state1_out", "scan0_out", "scan1_out"]
+
+    @pytest.mark.parametrize(
+        "attrs",
+        [
+            {"scan_input_axes": [1, 0]},
+            {"scan_input_directions": [1, 0]},
+            {"scan_output_axes": [1, 0]},
+            {"scan_output_directions": [1, 0]},
+        ],
+    )
+    def test_scan_rejects_non_default_axes_or_directions(self, attrs: dict[str, list[int]]) -> None:
+        model = self._make_scan_model(
+            state_inputs=["s0", "s1"],
+            scan_inputs=["scan0", "scan1"],
+            body_inputs=[
+                helper.make_tensor_value_info("state0_in", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("state1_in", TensorProto.FLOAT, [5]),
+                helper.make_tensor_value_info("scan0_step", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("scan1_step", TensorProto.FLOAT, [3]),
+            ],
+            body_outputs=[
+                helper.make_tensor_value_info("state0_out", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("state1_out", TensorProto.FLOAT, [5]),
+                helper.make_tensor_value_info("scan0_out", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("scan1_out", TensorProto.FLOAT, [3]),
+            ],
+            attrs=attrs,
+        )
+        with np.testing.assert_raises_regex(ValueError, "Scan node .* unsupported non-default scan"):
+            import_model(model)
+
+    def test_scan_rejects_body_interface_mismatch(self) -> None:
+        model = self._make_scan_model(
+            state_inputs=["s0", "s1"],
+            scan_inputs=["scan0", "scan1"],
+            body_inputs=[
+                helper.make_tensor_value_info("state0_in", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("state1_in", TensorProto.FLOAT, [5]),
+                helper.make_tensor_value_info("scan0_step", TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("scan1_step", TensorProto.FLOAT, [3]),
+            ],
+            body_outputs=[
+                helper.make_tensor_value_info("state0_out", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("state1_out", TensorProto.FLOAT, [5]),
+                helper.make_tensor_value_info("scan0_out", TensorProto.FLOAT, [2]),
+            ],
+        )
+        with np.testing.assert_raises_regex(ValueError, "Scan"):
+            import_model(model)
 
 
 class TestGenericChildSubgraphImport:
