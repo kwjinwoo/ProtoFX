@@ -424,6 +424,7 @@ class Graph:
         self._validate_child_subgraphs()
         self._validate_if_nodes()
         self._validate_loop_nodes()
+        self._validate_scan_nodes()
 
     def _validate_graph_local_invariants(self) -> None:
         """Validate graph-local invariants without traversing child graphs."""
@@ -690,3 +691,121 @@ class Graph:
                 if self._shapes_provably_mismatch(init_shape, parent_out_shape):
                     msg = f"node {node.id!r} (Loop) carried output {slot}: shape mismatch with parent output"
                     raise ValueError(msg)
+
+    def _validate_scan_nodes(self) -> None:
+        """Validate ``Scan`` body interfaces and state/scanned-output contracts on this graph only."""
+        for node in self.nodes:
+            if node.op_type != "Scan":
+                continue
+
+            body = node.subgraphs.get("body")
+            if not isinstance(body, Graph):
+                msg = f"node {node.id!r} (Scan): missing required body subgraph"
+                raise ValueError(msg)
+
+            num_scan_inputs_attr = node.attributes.get("num_scan_inputs", 1)
+            if not isinstance(num_scan_inputs_attr, int):
+                msg = f"node {node.id!r} (Scan): num_scan_inputs must be an int"
+                raise ValueError(msg)
+            num_scan_inputs = int(num_scan_inputs_attr)
+            if num_scan_inputs < 1:
+                msg = f"node {node.id!r} (Scan): num_scan_inputs must be >= 1"
+                raise ValueError(msg)
+
+            for attr_name in (
+                "scan_input_axes",
+                "scan_input_directions",
+                "scan_output_axes",
+                "scan_output_directions",
+            ):
+                attr_value = node.attributes.get(attr_name)
+                if attr_value is None:
+                    continue
+                values = [int(attr_value)] if isinstance(attr_value, int) else [int(v) for v in attr_value]
+                if any(v != 0 for v in values):
+                    msg = f"node {node.id!r} (Scan): unsupported non-default scan {attr_name}"
+                    raise ValueError(msg)
+
+            if len(node.inputs) != len(body.inputs):
+                msg = (
+                    f"node {node.id!r} (Scan): body input arity mismatch "
+                    f"(body={len(body.inputs)}, expected={len(node.inputs)})"
+                )
+                raise ValueError(msg)
+
+            if len(node.outputs) != len(body.outputs):
+                msg = (
+                    f"node {node.id!r} (Scan): body output arity mismatch "
+                    f"(body={len(body.outputs)}, expected={len(node.outputs)})"
+                )
+                raise ValueError(msg)
+
+            max_state_count = len(node.inputs) - num_scan_inputs
+            candidate_state_counts: list[int] = []
+            for state_count in range(max_state_count + 1):
+                if self._scan_contract_matches(node, body, state_count=state_count, num_scan_inputs=num_scan_inputs):
+                    candidate_state_counts.append(state_count)
+
+            if len(candidate_state_counts) != 1:
+                msg = f"node {node.id!r} (Scan): body interface mismatch or ambiguous state/scan family mapping"
+                raise ValueError(msg)
+
+    def _scan_contract_matches(self, node: Node, body: Graph, *, state_count: int, num_scan_inputs: int) -> bool:
+        """Return whether one candidate Scan state-family split satisfies known metadata."""
+        if state_count > len(node.outputs):
+            return False
+
+        scan_output_count = len(node.outputs) - state_count
+        if scan_output_count < 0:
+            return False
+
+        for state_slot in range(state_count):
+            parent_state_in = node.inputs[state_slot]
+            body_state_in = body.inputs[state_slot]
+            body_state_out = body.outputs[state_slot]
+            parent_state_out = node.outputs[state_slot]
+
+            known_dtypes = [
+                dtype
+                for dtype in (
+                    parent_state_in.tensor_type.dtype,
+                    body_state_in.tensor_type.dtype,
+                    body_state_out.tensor_type.dtype,
+                    parent_state_out.tensor_type.dtype,
+                )
+                if dtype is not None
+            ]
+            if known_dtypes and any(dtype != known_dtypes[0] for dtype in known_dtypes[1:]):
+                return False
+
+            if self._shapes_provably_mismatch(parent_state_in.tensor_type.shape, body_state_in.tensor_type.shape):
+                return False
+            if self._shapes_provably_mismatch(parent_state_in.tensor_type.shape, body_state_out.tensor_type.shape):
+                return False
+            if self._shapes_provably_mismatch(parent_state_in.tensor_type.shape, parent_state_out.tensor_type.shape):
+                return False
+
+        for scan_slot in range(num_scan_inputs):
+            parent_scan_in = node.inputs[state_count + scan_slot]
+            body_scan_in = body.inputs[state_count + scan_slot]
+            if not self._scan_sequence_matches_slice(parent_scan_in.tensor_type, body_scan_in.tensor_type):
+                return False
+
+        for scan_slot in range(scan_output_count):
+            body_scan_out = body.outputs[state_count + scan_slot]
+            parent_scan_out = node.outputs[state_count + scan_slot]
+            if not self._scan_sequence_matches_slice(parent_scan_out.tensor_type, body_scan_out.tensor_type):
+                return False
+
+        return True
+
+    def _scan_sequence_matches_slice(self, sequence_type: TensorType, slice_type: TensorType) -> bool:
+        """Return whether Scan sequence metadata matches one per-step slice metadata."""
+        if sequence_type.dtype is not None and slice_type.dtype is not None and sequence_type.dtype != slice_type.dtype:
+            return False
+        sequence_shape = sequence_type.shape
+        if sequence_shape is None:
+            return True
+        if len(sequence_shape) == 0:
+            return False
+        return not self._shapes_provably_mismatch(sequence_shape[1:], slice_type.shape)

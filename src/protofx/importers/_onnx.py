@@ -531,6 +531,43 @@ def _matches_tensor_type(candidate: Value, reference: Value) -> bool:
     return not _shapes_provably_mismatch(candidate.tensor_type.shape, reference.tensor_type.shape)
 
 
+def _matches_scan_slice_type(candidate_slice: Value, sequence_value: Value) -> bool:
+    """Return whether one Scan per-step slice is compatible with one sequence operand.
+
+    Args:
+        candidate_slice: Candidate body input/output representing one iteration slice.
+        sequence_value: Parent Scan input/output representing the full sequence.
+
+    Returns:
+        ``True`` when available metadata does not prove a mismatch.
+    """
+    candidate_dtype = candidate_slice.tensor_type.dtype
+    sequence_dtype = sequence_value.tensor_type.dtype
+    if candidate_dtype is not None and sequence_dtype is not None and candidate_dtype != sequence_dtype:
+        return False
+
+    sequence_shape = sequence_value.tensor_type.shape
+    if sequence_shape is None:
+        return True
+    if len(sequence_shape) == 0:
+        return False
+    return not _shapes_provably_mismatch(candidate_slice.tensor_type.shape, sequence_shape[1:])
+
+
+def _matches_scan_slice_to_tensor_type(candidate_slice: Value, sequence_type: TensorType) -> bool:
+    """Return whether one Scan per-step slice matches one sequence ``TensorType``."""
+    candidate_dtype = candidate_slice.tensor_type.dtype
+    sequence_dtype = sequence_type.dtype
+    if candidate_dtype is not None and sequence_dtype is not None and candidate_dtype != sequence_dtype:
+        return False
+    sequence_shape = sequence_type.shape
+    if sequence_shape is None:
+        return True
+    if len(sequence_shape) == 0:
+        return False
+    return not _shapes_provably_mismatch(candidate_slice.tensor_type.shape, sequence_shape[1:])
+
+
 def _normalize_loop_capture_order(
     node_proto: onnx.NodeProto,
     value_registry: dict[str, Value],
@@ -637,6 +674,169 @@ def _normalize_loop_capture_order(
     return normalized_capture_order
 
 
+def _normalize_scan_capture_order(
+    node_proto: onnx.NodeProto,
+    value_registry: dict[str, Value],
+    node_inputs: list[Value],
+    node_output_types: list[TensorType],
+    scan_entry: tuple[Graph, list[str]] | None,
+) -> list[str]:
+    """Normalize Scan body interfaces and captures to the MVP contract.
+
+    Args:
+        node_proto: Source Scan node.
+        value_registry: Parent graph name-to-value registry.
+        node_inputs: Parent Scan inputs resolved from ONNX positional operands.
+        scan_entry: Imported Scan body graph and capture names.
+
+    Returns:
+        Scan capture ordering to append to parent Scan node inputs.
+    """
+    if scan_entry is None:
+        return []
+
+    body_graph, body_capture_names = scan_entry
+    owner_label = f"Scan node {node_proto.name or node_proto.op_type!r}"
+    num_scan_inputs = 1
+    for attr in node_proto.attribute:
+        if attr.name == "num_scan_inputs":
+            num_scan_inputs = int(attr.i)
+            break
+    if num_scan_inputs < 1:
+        msg = f"{owner_label}: num_scan_inputs must be >= 1"
+        raise ValueError(msg)
+
+    for attr_name in (
+        "scan_input_axes",
+        "scan_input_directions",
+        "scan_output_axes",
+        "scan_output_directions",
+    ):
+        attr_proto = next((attr for attr in node_proto.attribute if attr.name == attr_name), None)
+        if attr_proto is None:
+            continue
+        attr_values = [int(value) for value in attr_proto.ints]
+        if attr_values and any(value != 0 for value in attr_values):
+            msg = f"{owner_label}: unsupported non-default scan {attr_name}"
+            raise ValueError(msg)
+
+    state_count = len(node_proto.input) - num_scan_inputs
+    if state_count < 0:
+        msg = f"{owner_label}: invalid num_scan_inputs={num_scan_inputs} for {len(node_proto.input)} inputs"
+        raise ValueError(msg)
+
+    capture_name_set = set(body_capture_names)
+    non_capture_inputs = [value for value in body_graph.inputs if value.name not in capture_name_set]
+    expected_non_capture_inputs = state_count + num_scan_inputs
+    if len(non_capture_inputs) != expected_non_capture_inputs:
+        msg = (
+            f"{owner_label}: body input arity mismatch "
+            f"(body={len(non_capture_inputs)}, expected={expected_non_capture_inputs})"
+        )
+        raise ValueError(msg)
+
+    non_capture_outputs = list(body_graph.outputs)
+    expected_non_capture_outputs = len(node_proto.output)
+    if len(non_capture_outputs) != expected_non_capture_outputs:
+        msg = (
+            f"{owner_label}: body output arity mismatch "
+            f"(body={len(non_capture_outputs)}, expected={expected_non_capture_outputs})"
+        )
+        raise ValueError(msg)
+    scan_output_count = expected_non_capture_outputs - state_count
+    if scan_output_count < 0:
+        msg = f"{owner_label}: output arity smaller than state arity"
+        raise ValueError(msg)
+
+    remaining_inputs = list(non_capture_inputs)
+    ordered_scan_inputs: list[Value] = []
+    for scan_slot in range(num_scan_inputs):
+        parent_scan = node_inputs[state_count + scan_slot]
+        scan_candidates = [value for value in remaining_inputs if _matches_scan_slice_type(value, parent_scan)]
+        if not scan_candidates:
+            msg = f"{owner_label}: body interface mismatch at scan input {scan_slot}"
+            raise ValueError(msg)
+        if len(scan_candidates) > 1:
+            msg = f"{owner_label}: ambiguous scan input mapping at slot {scan_slot}"
+            raise ValueError(msg)
+        matched = scan_candidates[0]
+        ordered_scan_inputs.append(matched)
+        remaining_inputs = [value for value in remaining_inputs if value is not matched]
+
+    ordered_state_inputs: list[Value] = []
+    for state_slot in range(state_count):
+        parent_state = node_inputs[state_slot]
+        state_candidates = [value for value in remaining_inputs if _matches_tensor_type(value, parent_state)]
+        if not state_candidates:
+            msg = f"{owner_label}: body interface mismatch at state input {state_slot}"
+            raise ValueError(msg)
+        if len(state_candidates) > 1:
+            msg = f"{owner_label}: ambiguous state input mapping at slot {state_slot}"
+            raise ValueError(msg)
+        matched = state_candidates[0]
+        ordered_state_inputs.append(matched)
+        remaining_inputs = [value for value in remaining_inputs if value is not matched]
+
+    if remaining_inputs:
+        msg = f"{owner_label}: body interface mismatch (unexpected body inputs)"
+        raise ValueError(msg)
+
+    remaining_outputs = list(non_capture_outputs)
+    ordered_state_outputs: list[Value] = []
+    for state_slot in range(state_count):
+        state_candidates = [
+            value for value in remaining_outputs if _matches_tensor_type(value, node_inputs[state_slot])
+        ]
+        if not state_candidates:
+            msg = f"{owner_label}: body interface mismatch at state output {state_slot}"
+            raise ValueError(msg)
+        if len(state_candidates) > 1:
+            msg = f"{owner_label}: ambiguous state output mapping at slot {state_slot}"
+            raise ValueError(msg)
+        matched = state_candidates[0]
+        ordered_state_outputs.append(matched)
+        remaining_outputs = [value for value in remaining_outputs if value is not matched]
+
+    ordered_scan_outputs: list[Value] = []
+    for scan_slot in range(scan_output_count):
+        parent_scan_out = node_output_types[state_count + scan_slot]
+        scan_candidates = [
+            value for value in remaining_outputs if _matches_scan_slice_to_tensor_type(value, parent_scan_out)
+        ]
+        if not scan_candidates:
+            msg = f"{owner_label}: body interface mismatch at scan output {scan_slot}"
+            raise ValueError(msg)
+        if len(scan_candidates) > 1:
+            msg = f"{owner_label}: ambiguous scan output mapping at slot {scan_slot}"
+            raise ValueError(msg)
+        matched = scan_candidates[0]
+        ordered_scan_outputs.append(matched)
+        remaining_outputs = [value for value in remaining_outputs if value is not matched]
+
+    if remaining_outputs:
+        msg = f"{owner_label}: body interface mismatch (unexpected body outputs)"
+        raise ValueError(msg)
+
+    normalized_capture_order = [name for name in value_registry if name in capture_name_set]
+    unresolved_capture_names = sorted(capture_name_set - set(normalized_capture_order))
+    if unresolved_capture_names:
+        unresolved_name = unresolved_capture_names[0]
+        msg = f"{owner_label}: unresolved capture {unresolved_name!r}"
+        raise ValueError(msg)
+
+    _reorder_child_capture_inputs(
+        body_graph,
+        child_capture_names=body_capture_names,
+        normalized_capture_order=normalized_capture_order,
+        owner_label=owner_label,
+    )
+    capture_values_by_name = {value.name: value for value in body_graph.inputs if value.name is not None}
+    ordered_capture_inputs = [capture_values_by_name[name] for name in normalized_capture_order]
+    body_graph.inputs = [*ordered_state_inputs, *ordered_scan_inputs, *ordered_capture_inputs]
+    body_graph.set_graph_outputs([*ordered_state_outputs, *ordered_scan_outputs])
+    return normalized_capture_order
+
+
 def _import_nodes(
     graph: Graph,
     graph_proto: onnx.GraphProto,
@@ -703,6 +903,7 @@ def _import_nodes(
         subgraphs: dict[str, Graph | tuple[Graph, ...]] = {}
         if_branch_captures: dict[str, tuple[Graph, list[str]]] = {}
         loop_body_capture: tuple[Graph, list[str]] | None = None
+        scan_body_capture: tuple[Graph, list[str]] | None = None
         generic_child_captures: list[tuple[Graph, list[str]]] = []
         for attr in node_proto.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
@@ -717,6 +918,8 @@ def _import_nodes(
                     if_branch_captures[attr.name] = (child_graph, child_captures)
                 elif node_proto.op_type == "Loop" and attr.name == "body":
                     loop_body_capture = (child_graph, child_captures)
+                elif node_proto.op_type == "Scan" and attr.name == "body":
+                    scan_body_capture = (child_graph, child_captures)
                 else:
                     generic_child_captures.append((child_graph, child_captures))
                 continue
@@ -744,6 +947,12 @@ def _import_nodes(
         elif node_proto.op_type == "Loop":
             normalized_capture_order = _normalize_loop_capture_order(
                 node_proto, value_registry, inputs, loop_body_capture
+            )
+            for capture_name in normalized_capture_order:
+                inputs.append(value_registry[capture_name])
+        elif node_proto.op_type == "Scan":
+            normalized_capture_order = _normalize_scan_capture_order(
+                node_proto, value_registry, inputs, output_types, scan_body_capture
             )
             for capture_name in normalized_capture_order:
                 inputs.append(value_registry[capture_name])
