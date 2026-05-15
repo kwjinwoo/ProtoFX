@@ -46,7 +46,7 @@ Use the following documents depending on the question being asked.
 | Question | Document |
 |----------|----------|
 | Why does ProtoFX use this IR design? | `docs/adr/0001-thin-graph-owned-ir.md` |
-| Why does the control-flow foundation use explicit child subgraphs, `If`, and Loop carry-state scoping? | `docs/adr/0008-control-flow-subgraphs-and-if-mvp.md`, `docs/adr/0009-loop-loop-carried-state-and-while-loop-lowering.md` |
+| Why does the control-flow foundation use explicit child subgraphs, `If`, Loop carry-state scoping, and Scan scanned-output scoping? | `docs/adr/0008-control-flow-subgraphs-and-if-mvp.md`, `docs/adr/0009-loop-loop-carried-state-and-while-loop-lowering.md`, `docs/adr/0010-scan-mvp-state-scanned-output-and-while-loop-lowering.md` |
 | What invariants must always hold? | `docs/dev/ir/invariants.md` |
 | How are tensor metadata and value kinds modeled? | `docs/dev/ir/type-system.md` |
 | How does graph ownership and mutation work? | `docs/dev/ir/graph-model.md` |
