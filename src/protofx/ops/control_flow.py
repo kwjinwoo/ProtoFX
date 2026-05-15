@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from protofx.ir.graph import Graph
 from protofx.ops._registry import register_op
+from protofx.utils.dtype import ir_dtype_to_torch
 
 if TYPE_CHECKING:
     import torch
@@ -83,12 +84,27 @@ def _call_torch_while_loop(
 
 
 def _scan_trip_count(scan_input: torch.Tensor) -> int:
-    """Return the Scan iteration count from one normalized scan input."""
+    """Return the Scan iteration count from one normalized scan input.
+
+    Args:
+        scan_input: One normalized Scan sequence input.
+
+    Returns:
+        The leading-axis iteration count for Scan execution.
+    """
     return int(scan_input.shape[0])
 
 
 def _make_scan_cond_fn(trip_count: int) -> Callable[..., torch.Tensor]:
-    """Build a ``torch.while_loop`` condition callable for one Scan node."""
+    """Build a ``torch.while_loop`` condition callable for one Scan node.
+
+    Args:
+        trip_count: Total Scan iteration count.
+
+    Returns:
+        A callable that consumes ``(iteration, *state_and_accum)`` and returns
+        whether another iteration should run.
+    """
     import torch
 
     def _cond_fn(iteration: torch.Tensor, *state_and_accum: torch.Tensor) -> torch.Tensor:
@@ -98,11 +114,55 @@ def _make_scan_cond_fn(trip_count: int) -> Callable[..., torch.Tensor]:
     return _cond_fn
 
 
-def _make_scan_initial_accumulator(scan_input: torch.Tensor) -> torch.Tensor:
-    """Create an empty leading-dimension accumulator for one Scan output family."""
+def _make_scan_initial_accumulator(
+    trip_count: int,
+    per_step_shape: tuple[int, ...],
+    dtype: torch.dtype | None,
+) -> torch.Tensor:
+    """Create an empty accumulator for one Scan output family.
+
+    Args:
+        trip_count: Total Scan iteration count.
+        per_step_shape: Per-step shape for one Scan output family.
+        dtype: Optional ``torch.dtype`` for the accumulator tensor.
+
+    Returns:
+        A zero-initialized accumulator with shape ``(trip_count, *per_step_shape)``.
+    """
     import torch
 
-    return torch.zeros_like(scan_input)
+    return torch.zeros((trip_count, *per_step_shape), dtype=dtype)
+
+
+def _scan_output_accumulator_spec(scan_output: Node | object) -> tuple[tuple[int, ...], torch.dtype | None]:
+    """Infer Scan accumulator metadata from one normalized parent scan output.
+
+    Args:
+        scan_output: Normalized parent Scan output value.
+
+    Returns:
+        A tuple of ``(per_step_shape, dtype)`` for accumulator initialization.
+
+    Raises:
+        ValueError: If scan-output metadata is missing or non-concrete for
+            accumulator initialization.
+    """
+    output_shape = scan_output.tensor_type.shape
+    if output_shape is None or len(output_shape) < 1:
+        msg = "Scan: scanned output shape metadata is required before emission"
+        raise ValueError(msg)
+    per_step_shape: list[int] = []
+    for dim in output_shape[1:]:
+        if not isinstance(dim, int):
+            msg = "Scan: scanned output per-step shape must be concrete before emission"
+            raise ValueError(msg)
+        per_step_shape.append(dim)
+    output_dtype = scan_output.tensor_type.dtype
+    torch_dtype = ir_dtype_to_torch(output_dtype)
+    if output_dtype is not None and torch_dtype is None:
+        msg = "Scan: scanned output dtype is unsupported for torch accumulation"
+        raise ValueError(msg)
+    return tuple(per_step_shape), torch_dtype
 
 
 def _make_scan_body_fn(
@@ -112,7 +172,19 @@ def _make_scan_body_fn(
     state_count: int,
     scan_output_count: int,
 ) -> Callable[..., tuple[torch.Tensor, ...]]:
-    """Build a ``torch.while_loop`` body callable for one Scan node."""
+    """Build a ``torch.while_loop`` body callable for one Scan node.
+
+    Args:
+        body_callable: Lowered child-graph callable for the Scan body.
+        scan_inputs: Normalized Scan sequence inputs.
+        captures: Explicit capture operands to close over.
+        state_count: Number of Scan state families.
+        scan_output_count: Number of Scan output families.
+
+    Returns:
+        A callable that consumes ``(iteration, *state_and_accum)`` and returns
+        the updated loop state tuple.
+    """
     import torch
 
     def _body_fn(iteration: torch.Tensor, *state_and_accum: torch.Tensor) -> tuple[torch.Tensor, ...]:
@@ -145,7 +217,15 @@ def _scan_sequence_matches_slice(
     sequence_value: Node | object,
     slice_value: Node | object,
 ) -> bool:
-    """Return whether Scan sequence metadata matches per-step slice metadata."""
+    """Return whether Scan sequence metadata matches per-step slice metadata.
+
+    Args:
+        sequence_value: Sequence value metadata from a parent Scan interface.
+        slice_value: Per-step slice metadata from a Scan body interface.
+
+    Returns:
+        ``True`` when known metadata is compatible, else ``False``.
+    """
     sequence_type = sequence_value.tensor_type
     slice_type = slice_value.tensor_type
     if sequence_type.dtype is not None and slice_type.dtype is not None and sequence_type.dtype != slice_type.dtype:
@@ -170,7 +250,19 @@ def _scan_sequence_matches_slice(
 
 
 def _infer_scan_state_count(node: Node, body_graph: Graph, num_scan_inputs: int) -> int:
-    """Infer the Scan state-family arity from normalized node/body metadata."""
+    """Infer the Scan state-family arity from normalized node/body metadata.
+
+    Args:
+        node: Normalized parent Scan node.
+        body_graph: Normalized Scan body subgraph.
+        num_scan_inputs: Number of Scan sequence-input families.
+
+    Returns:
+        The inferred number of Scan state families.
+
+    Raises:
+        ValueError: If the node/body contract is ambiguous or invalid.
+    """
     if len(body_graph.inputs) != len(node.inputs) or len(body_graph.outputs) != len(node.outputs):
         msg = "Scan: body input/output arity mismatch before emission"
         raise ValueError(msg)
@@ -358,7 +450,20 @@ def _scan(
     fx_graph: torch.fx.Graph,
     module: torch.nn.Module,
 ) -> list[torch.fx.Node]:
-    """Emit ``torch.while_loop`` for the ONNX ``Scan`` op."""
+    """Emit ``torch.while_loop`` for the ONNX ``Scan`` op.
+
+    Args:
+        node: The IR Scan node.
+        args: Input FX nodes in normalized order ``(state..., scan_inputs..., captures...)``.
+        fx_graph: The FX graph being constructed.
+        module: The root module carrying the internal child-graph helper.
+
+    Returns:
+        A list of FX nodes ordered as final state outputs then scanned outputs.
+
+    Raises:
+        ValueError: If normalized inputs or child-graph metadata are invalid.
+    """
     import torch
 
     helper = getattr(module, "_protofx_child_graph_emitter", None)
@@ -382,9 +487,6 @@ def _scan(
 
     state_count = _infer_scan_state_count(node, body_graph, num_scan_inputs)
     scan_output_count = len(node.outputs) - state_count
-    if scan_output_count != num_scan_inputs:
-        msg = "Scan: scan output family count must match scan input family count in MVP lowering"
-        raise NotImplementedError(msg)
 
     expected_min_inputs = state_count + num_scan_inputs
     if len(args) < expected_min_inputs:
@@ -418,10 +520,12 @@ def _scan(
         args=(body_callable, tuple(scan_inputs), tuple(captures), state_count, scan_output_count),
     )
     iteration0 = fx_graph.call_function(torch.tensor, args=(0,), kwargs={"dtype": torch.int64})
-    scan_accums = [
-        fx_graph.call_function(_make_scan_initial_accumulator, args=(scan_inputs[scan_slot],))
-        for scan_slot in range(scan_output_count)
-    ]
+    scan_accums: list[torch.fx.Node] = []
+    for scan_slot in range(scan_output_count):
+        per_step_shape, scan_dtype = _scan_output_accumulator_spec(node.outputs[state_count + scan_slot])
+        scan_accums.append(
+            fx_graph.call_function(_make_scan_initial_accumulator, args=(trip_count, per_step_shape, scan_dtype))
+        )
     loop_state = (iteration0, *state_inputs, *scan_accums)
     final_state = fx_graph.call_function(_call_torch_while_loop, args=(cond_fn, body_fn, loop_state))
     state_outputs = [

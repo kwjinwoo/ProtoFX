@@ -73,6 +73,48 @@ def _make_scan_model() -> helper.ModelProto:
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
 
 
+def _make_scan_independent_output_model() -> helper.ModelProto:
+    """Build a representative ONNX Scan model with scan outputs independent from scan-input metadata."""
+    state_init = helper.make_tensor_value_info("state_init", TensorProto.FLOAT, [1])
+    scan_in = helper.make_tensor_value_info("scan_in", TensorProto.FLOAT, [3, 2])
+    capture = helper.make_tensor_value_info("x", TensorProto.FLOAT, [])
+    final_state = helper.make_tensor_value_info("final_state", TensorProto.FLOAT, [1])
+    scanned_identity = helper.make_tensor_value_info("scanned_identity", TensorProto.FLOAT, [3, 2])
+    scanned_reduced = helper.make_tensor_value_info("scanned_reduced", TensorProto.FLOAT, [3])
+
+    body_graph = helper.make_graph(
+        [
+            helper.make_node("ReduceSum", ["scan_step"], ["scan_reduced_vec"], keepdims=1),
+            helper.make_node("ReduceSum", ["scan_step"], ["scan_reduced_scalar"], keepdims=0),
+            helper.make_node("Add", ["state_in", "scan_reduced_vec"], ["state_mid"]),
+            helper.make_node("Add", ["state_mid", "x"], ["state_out"]),
+            helper.make_node("Identity", ["scan_step"], ["scan_out0"]),
+            helper.make_node("Identity", ["scan_reduced_scalar"], ["scan_out1"]),
+        ],
+        "body",
+        [
+            helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [1]),
+            helper.make_tensor_value_info("scan_step", TensorProto.FLOAT, [2]),
+        ],
+        [
+            helper.make_tensor_value_info("state_out", TensorProto.FLOAT, [1]),
+            helper.make_tensor_value_info("scan_out0", TensorProto.FLOAT, [2]),
+            helper.make_tensor_value_info("scan_out1", TensorProto.FLOAT, []),
+        ],
+    )
+    scan_node = helper.make_node(
+        "Scan",
+        ["state_init", "scan_in"],
+        ["final_state", "scanned_identity", "scanned_reduced"],
+        num_scan_inputs=1,
+        body=body_graph,
+    )
+    graph = helper.make_graph(
+        [scan_node], "scan_graph", [state_init, scan_in, capture], [final_state, scanned_identity, scanned_reduced]
+    )
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+
 class TestLoopScanParity:
     """Representative ORT parity for Loop and Scan within the MVP boundary."""
 
@@ -94,6 +136,17 @@ class TestLoopScanParity:
             _make_scan_model(),
             {
                 "state_init": np.asarray(0.0, dtype=np.float32),
+                "scan_in": np.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
+                "x": np.asarray(1.0, dtype=np.float32),
+            },
+        )
+
+    def test_scan_parity_with_independent_output_metadata(self) -> None:
+        """Scan parity must hold when scan outputs are independent from scan-input metadata."""
+        assert_parity(
+            _make_scan_independent_output_model(),
+            {
+                "state_init": np.asarray([0.0], dtype=np.float32),
                 "scan_in": np.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
                 "x": np.asarray(1.0, dtype=np.float32),
             },
