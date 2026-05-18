@@ -150,11 +150,25 @@ axis-0 forward scanned outputs, and prove representative parity plus downstream 
 
 ---
 
+## Milestone 10 — Symbolic Shape Propagation Foundation
+
+Establish the accepted symbolic shape propagation direction from
+`docs/adr/0011-symbolic-shape-propagation-pipeline-and-validation-boundary.md`, while explicitly deferring runtime
+dynamic lowering for shape-as-data ops.
+
+| Status | Item |
+|--------|------|
+| 📋 | IR-level symbolic shape propagation is the authoritative derived metadata layer for validation and emission preconditions |
+| 📋 | ONNX shape inference is used as seed input only, with tri-state shape comparison semantics (compatible / provably incompatible / unknown) applied consistently |
+| 📋 | First-phase symbolic propagation coverage is established across elementwise/pass-through, simple shape transforms, broadcast/reduction/linalg, spatial ops, and `If` |
+| 📋 | Deferred boundaries are maintained for `Loop`/`Scan` propagation extensions and runtime dynamic lowering for shape-as-data operators |
+
+---
+
 ## Under Consideration 💡
 
 Ideas not yet scheduled. Discuss with `@Architect` before moving to a milestone.
 
-- Dynamic shape / symbolic shape propagation
 - Plugin system for 3rd-party op domains
 - ONNX model surgery utilities (graph editing before conversion)
 - CLI tool (`protofx convert model.onnx`)
