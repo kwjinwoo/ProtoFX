@@ -1664,6 +1664,14 @@ class TestImporterShapePipeline:
         graph = helper.make_graph([if_node], "if_pipeline_graph", [cond, x], [y])
         return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
 
+    @staticmethod
+    def _make_flatten_with_stale_output_shape() -> onnx.ModelProto:
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3, 4])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [99, 99])
+        flatten = helper.make_node("Flatten", ["x"], ["y"], axis=1)
+        graph = helper.make_graph([flatten], "flatten_pipeline_graph", [x], [y])
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
     def test_import_model_runs_propagation_before_validate(self) -> None:
         """Stale seed metadata must be tolerated when derivable via propagation."""
         graph = import_model(self._make_if_with_stale_output_shape())
@@ -1676,3 +1684,11 @@ class TestImporterShapePipeline:
         graph = import_model(self._make_if_with_stale_output_shape())
         assert graph.outputs[0].tensor_type.shape == (9,)
         assert get_authoritative_shape(graph.outputs[0]) == (2,)
+
+    def test_import_model_overrides_stale_flatten_seed_shape(self) -> None:
+        """Flatten output authoritative shape must come from propagation, not stale seed metadata."""
+        from protofx.ir.derived_shape import get_authoritative_shape
+
+        graph = import_model(self._make_flatten_with_stale_output_shape())
+        assert graph.outputs[0].tensor_type.shape == (99, 99)
+        assert get_authoritative_shape(graph.outputs[0]) == (2, 12)

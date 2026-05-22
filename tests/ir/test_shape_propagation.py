@@ -1,5 +1,7 @@
 """Tests for IR-level symbolic shape propagation."""
 
+import numpy as np
+
 from protofx.ir import DType, Graph, TensorType
 from protofx.ir.derived_shape import get_authoritative_shape
 from protofx.ir.shape_propagation import propagate_shapes
@@ -36,3 +38,76 @@ def test_propagate_add_broadcast_shape() -> None:
     propagate_shapes(graph)
 
     assert get_authoritative_shape(node.outputs[0]) == (2, 3)
+
+
+def test_propagate_flatten_overrides_seed_metadata() -> None:
+    """Flatten output shape should be derived from authoritative input metadata."""
+    graph = Graph(name="flatten_graph")
+    x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3, 4)), name="x")
+    node = graph.make_node(
+        op_type="Flatten",
+        inputs=[x],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(99, 99))],
+        attributes={"axis": 1},
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) == (2, 12)
+
+
+def test_propagate_reduce_sum_overrides_seed_metadata() -> None:
+    """ReduceSum output shape should follow axes and keepdims semantics."""
+    graph = Graph(name="reduce_graph")
+    x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3, 4)), name="x")
+    node = graph.make_node(
+        op_type="ReduceSum",
+        inputs=[x],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(111, 222, 333))],
+        attributes={"axes": [1], "keepdims": 0},
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) == (2, 4)
+
+
+def test_propagate_matmul_overrides_seed_metadata() -> None:
+    """MatMul output shape should derive from input matrix shapes."""
+    graph = Graph(name="matmul_graph")
+    lhs = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="lhs")
+    rhs = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(3, 5)), name="rhs")
+    node = graph.make_node(
+        op_type="MatMul",
+        inputs=[lhs, rhs],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(77, 88))],
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) == (2, 5)
+
+
+def test_propagate_conv_overrides_seed_metadata() -> None:
+    """Conv output shape should derive from input shape, kernel, and attributes."""
+    graph = Graph(name="conv_graph")
+    x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(1, 3, 8, 8)), name="x")
+    w = graph.add_initializer(
+        tensor_type=TensorType(dtype=DType.FLOAT32, shape=(4, 3, 3, 3)),
+        data=np.ones((4, 3, 3, 3), dtype=np.float32),
+        name="w",
+    )
+    node = graph.make_node(
+        op_type="Conv",
+        inputs=[x, w],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(9, 9, 9, 9))],
+        attributes={"strides": [2, 2], "pads": [1, 1, 1, 1], "dilations": [1, 1], "group": 1},
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) == (1, 4, 4, 4)

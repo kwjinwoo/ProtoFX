@@ -164,3 +164,23 @@ def test_e2e_derived_shape_beats_seed_metadata() -> None:
     assert graph.outputs[0].tensor_type.shape == (99,)
     assert get_authoritative_shape(graph.outputs[0]) == (2,)
     assert result.shape == (2,)
+
+
+def test_e2e_flatten_uses_derived_shape_over_stale_seed_metadata() -> None:
+    """Flatten emission should consume derived output shape over stale seed metadata."""
+    x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3, 4])
+    y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [99, 99])
+    flatten = helper.make_node("Flatten", ["x"], ["y"], axis=1)
+    model = helper.make_model(
+        helper.make_graph([flatten], "flatten_derived_truth", [x], [y]),
+        opset_imports=[helper.make_opsetid("", 17)],
+    )
+
+    graph = import_model(model)
+    gm = emit_graph(graph)
+    input_tensor = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)
+    (result,) = gm(input_tensor)
+
+    assert graph.outputs[0].tensor_type.shape == (99, 99)
+    assert get_authoritative_shape(graph.outputs[0]) == (2, 12)
+    assert result.shape == (2, 12)
