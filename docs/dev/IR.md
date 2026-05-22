@@ -38,6 +38,7 @@ ProtoFX uses a thin normalized IR between ONNX import and `torch.fx` emission.
 - `ir.Graph` owns topology, node and value registration, and use-def consistency.
 - `ir.Node` and `ir.Value` remain mutable IR entities managed through graph-aware APIs.
 - `ir.TensorType` remains an immutable value object.
+- an internal derived-shape metadata layer is authoritative for validation and emission preconditions.
 - Dependency-safe node order is obtained through `Graph.topological_sort()`.
 - Control-flow child subgraphs follow the dedicated contract in `docs/dev/ir/control-flow.md`.
 
@@ -50,7 +51,7 @@ Use the following documents depending on the question being asked.
 | What invariants must always hold? | `docs/dev/ir/invariants.md` |
 | How are tensor metadata and value kinds modeled? | `docs/dev/ir/type-system.md` |
 | How does graph ownership and mutation work? | `docs/dev/ir/graph-model.md` |
-| Where is the importer / validator / emitter boundary? | `docs/dev/ir/contracts.md` |
+| Where is the importer / propagate / validator / emitter boundary? | `docs/dev/ir/contracts.md` |
 | How are control-flow child subgraphs represented and validated? | `docs/dev/ir/control-flow.md` |
 
 <!-- section:invariants -->

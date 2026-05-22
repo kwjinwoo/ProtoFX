@@ -43,8 +43,9 @@ The intended conversion pipeline is:
 ```text
 onnx.ModelProto
   -> importer
+  -> symbolic shape propagation
+  -> validation
   -> ir.Graph
-  -> validation / analysis passes
   -> emitter
   -> torch.fx.GraphModule
 ```
@@ -65,7 +66,8 @@ It must:
 - preserve source provenance needed for diagnostics
 - produce graph-valid IR or fail early
 
-The importer satisfies the fail-fast requirement by returning only graphs that pass `graph.validate()`.
+The importer satisfies the fail-fast requirement by running `import -> propagate -> validate -> return`.
+ONNX shape inference remains seed input only; derived metadata is authoritative after propagation.
 The importer must not leak raw ONNX protobuf handling into the emitter.
 
 Validation targets normalized IR, not raw ONNX inputs.
@@ -95,6 +97,7 @@ It must:
 - keep control-flow semantics handler-owned even when internal child-graph helpers are used
 
 The emitter must not reinterpret raw ONNX protobuf details.
+The emitter must not run symbolic propagation implicitly.
 
 The public entry point remains:
 
@@ -129,6 +132,7 @@ Unregistered ops raise `NotImplementedError`.
 - Unsupported omitted-`cond` Loop forms remain explicit failures in the current milestone.
 - Unsupported non-default Scan axes or directions remain explicit failures in the current milestone.
 - Metadata that cannot be proven from the model remains unknown rather than being guessed.
+- Loop and Scan propagation extensions are deferred beyond this milestone scope.
 
 <!-- section:non-goals -->
 ## Non-Goals

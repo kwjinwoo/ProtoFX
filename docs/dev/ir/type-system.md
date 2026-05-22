@@ -51,6 +51,13 @@ Expected field shape:
 | `producer` | `Node \| None` | Producing node, graph-managed |
 | `users` | `list[tuple[Node, int]]` | Consumer and slot pairs, graph-managed |
 
+`Value` also carries an internal derived tensor metadata slot used as the authoritative
+shape/dtype source for validation and emission preconditions.
+
+The public `Dim` contract remains unchanged:
+
+- `Dim = int | str | None`
+
 `ValueKind` should distinguish at least:
 
 - `GRAPH_INPUT`
@@ -69,3 +76,13 @@ Two boundary utilities bridge the IR type model to external systems:
 | `ir_dtype_to_torch(dtype)` | IR → PyTorch | `torch` |
 
 `torch` imports should remain lazy on the emitter side.
+
+## Shape Compatibility Semantics
+
+Shape comparison uses one centralized tri-state contract:
+
+- `compatible`: known metadata proves equality
+- `incompatible`: known metadata proves mismatch
+- `unknown`: metadata is insufficient to prove either direction
+
+Validation and emitter preconditions consume this shared semantics through derived metadata.
