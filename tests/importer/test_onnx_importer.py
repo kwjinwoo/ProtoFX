@@ -1639,3 +1639,40 @@ class TestAutoPadNormalization:
         conv_node = next(n for n in g.nodes if n.op_type == "Conv")
         assert conv_node.attributes.get("pads") == [1, 1]
         assert conv_node.attributes.get("auto_pad", b"NOTSET") == b"NOTSET"
+
+
+class TestImporterShapePipeline:
+    """Verify importer-owned import -> propagate -> validate sequencing."""
+
+    @staticmethod
+    def _make_if_with_stale_output_shape() -> onnx.ModelProto:
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [9])
+
+        then_out = helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [2])
+        then_graph = helper.make_graph(
+            [helper.make_node("Identity", ["x"], ["then_out"])], "then_graph", [], [then_out]
+        )
+
+        else_out = helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [2])
+        else_graph = helper.make_graph(
+            [helper.make_node("Identity", ["x"], ["else_out"])], "else_graph", [], [else_out]
+        )
+
+        if_node = helper.make_node("If", ["cond"], ["y"], then_branch=then_graph, else_branch=else_graph)
+        graph = helper.make_graph([if_node], "if_pipeline_graph", [cond, x], [y])
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+
+    def test_import_model_runs_propagation_before_validate(self) -> None:
+        """Stale seed metadata must be tolerated when derivable via propagation."""
+        graph = import_model(self._make_if_with_stale_output_shape())
+        assert graph.outputs[0].tensor_type.shape == (9,)
+
+    def test_import_model_sets_authoritative_shape_from_propagation(self) -> None:
+        """Authoritative shape must come from propagation, not raw ONNX seed metadata."""
+        from protofx.ir.derived_shape import get_authoritative_shape
+
+        graph = import_model(self._make_if_with_stale_output_shape())
+        assert graph.outputs[0].tensor_type.shape == (9,)
+        assert get_authoritative_shape(graph.outputs[0]) == (2,)
