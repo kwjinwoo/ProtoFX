@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from protofx.emitters._shape_preconditions import authoritative_shape
 from protofx.ops._registry import register_op
 
 if TYPE_CHECKING:
@@ -30,8 +31,9 @@ def _get_spatial_rank(node: Node) -> int:
             spatial rank is unsupported.
     """
     w_value = node.inputs[1]
-    if w_value.tensor_type.shape is not None:
-        spatial_rank = len(w_value.tensor_type.shape) - 2
+    w_shape = authoritative_shape(w_value)
+    if w_shape is not None:
+        spatial_rank = len(w_shape) - 2
     else:
         kernel_shape = node.attributes.get("kernel_shape")
         if kernel_shape is not None:

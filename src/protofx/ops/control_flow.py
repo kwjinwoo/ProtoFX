@@ -6,6 +6,8 @@ import operator
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from protofx.emitters._shape_preconditions import authoritative_shape
+from protofx.ir.derived_shape import get_authoritative_tensor_type
 from protofx.ir.graph import Graph
 from protofx.ops._registry import register_op
 from protofx.utils.dtype import ir_dtype_to_torch
@@ -147,7 +149,7 @@ def _scan_output_accumulator_spec(scan_output: Node | object) -> tuple[tuple[int
         ValueError: If scan-output metadata is missing or non-concrete for
             accumulator initialization.
     """
-    output_shape = scan_output.tensor_type.shape
+    output_shape = authoritative_shape(scan_output)
     if output_shape is None or len(output_shape) < 1:
         msg = "Scan: scanned output shape metadata is required before emission"
         raise ValueError(msg)
@@ -226,20 +228,21 @@ def _scan_sequence_matches_slice(
     Returns:
         ``True`` when known metadata is compatible, else ``False``.
     """
-    sequence_type = sequence_value.tensor_type
-    slice_type = slice_value.tensor_type
+    sequence_type = get_authoritative_tensor_type(sequence_value)
+    slice_type = get_authoritative_tensor_type(slice_value)
     if sequence_type.dtype is not None and slice_type.dtype is not None and sequence_type.dtype != slice_type.dtype:
         return False
-    sequence_shape = sequence_type.shape
+    sequence_shape = authoritative_shape(sequence_value)
     if sequence_shape is None:
         return True
     if len(sequence_shape) == 0:
         return False
-    if slice_type.shape is None:
+    slice_shape = authoritative_shape(slice_value)
+    if slice_shape is None:
         return True
-    if len(sequence_shape) - 1 != len(slice_type.shape):
+    if len(sequence_shape) - 1 != len(slice_shape):
         return False
-    for seq_dim, slice_dim in zip(sequence_shape[1:], slice_type.shape, strict=True):
+    for seq_dim, slice_dim in zip(sequence_shape[1:], slice_shape, strict=True):
         if seq_dim is None or slice_dim is None:
             continue
         if isinstance(seq_dim, str) or isinstance(slice_dim, str):

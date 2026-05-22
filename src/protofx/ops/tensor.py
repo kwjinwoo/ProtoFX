@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from protofx.emitters._shape_preconditions import authoritative_shape, require_authoritative_shape
 from protofx.ops._registry import register_op
 
 if TYPE_CHECKING:
@@ -130,7 +131,7 @@ def _flatten(
     """
     import torch
 
-    output_shape = node.outputs[0].tensor_type.shape
+    output_shape = authoritative_shape(node.outputs[0])
     if output_shape is None:
         msg = "Flatten: output tensor type has no static shape"
         raise NotImplementedError(msg)
@@ -210,7 +211,8 @@ def _unsqueeze(
     import torch
 
     axes = _extract_static_int_data(node, 1)
-    ndim_out = len(node.inputs[0].tensor_type.shape) + len(axes)
+    input_shape = require_authoritative_shape(node.inputs[0], op_name=node.op_type, input_index=0)
+    ndim_out = len(input_shape) + len(axes)
     sorted_axes = sorted(a if a >= 0 else a + ndim_out for a in axes)
     result = args[0]
     for ax in sorted_axes:

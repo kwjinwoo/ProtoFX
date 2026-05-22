@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from protofx.emitters._shape_preconditions import require_authoritative_shape
 from protofx.ops._registry import register_op
 
 if TYPE_CHECKING:
@@ -126,7 +127,7 @@ def _make_simple_reduce_handler(
         else:
             # torch.mean/sum require explicit dim when keepdim is used;
             # pass all dims to reduce over the entire tensor.
-            ndim = len(node.inputs[0].tensor_type.shape)
+            ndim = len(require_authoritative_shape(node.inputs[0], op_name=node.op_type, input_index=0))
             kwargs["dim"] = list(range(ndim))
 
         return [fx_graph.call_function(torch_fn, args=(args[0],), kwargs=kwargs)]
@@ -182,7 +183,7 @@ def _reduce_prod(
         return [args[0]]
 
     if axes is None:
-        axes = list(range(len(node.inputs[0].tensor_type.shape)))
+        axes = list(range(len(require_authoritative_shape(node.inputs[0], op_name=node.op_type, input_index=0))))
 
     result = args[0]
     for ax in sorted(axes, reverse=True):
@@ -208,7 +209,7 @@ def _resolve_reduce_kwargs(node: Node) -> tuple[list[int], bool, bool]:
     keepdims = _read_keepdims(node)
     noop = _read_noop_with_empty_axes(node)
     if axes is None and not noop:
-        axes = list(range(len(node.inputs[0].tensor_type.shape)))
+        axes = list(range(len(require_authoritative_shape(node.inputs[0], op_name=node.op_type, input_index=0))))
     return axes, keepdims, noop
 
 

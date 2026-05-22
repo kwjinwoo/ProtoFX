@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from protofx.emitters._shape_preconditions import authoritative_shape
 from protofx.ops._registry import register_op
 from protofx.ops.conv import _onnx_pads_to_torch
 
@@ -232,11 +233,12 @@ def _global_average_pool(
     import torch.nn.functional as F
 
     x_value = node.inputs[0]
-    if x_value.tensor_type.shape is None:
+    x_shape = authoritative_shape(x_value)
+    if x_shape is None:
         msg = "GlobalAveragePool: cannot determine spatial rank (no input shape)"
         raise NotImplementedError(msg)
 
-    spatial_rank = len(x_value.tensor_type.shape) - 2
+    spatial_rank = len(x_shape) - 2
     if spatial_rank not in (1, 2, 3):
         msg = f"GlobalAveragePool: unsupported spatial rank {spatial_rank}"
         raise NotImplementedError(msg)
