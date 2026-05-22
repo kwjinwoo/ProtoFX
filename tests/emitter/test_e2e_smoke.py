@@ -11,6 +11,7 @@ from onnx import TensorProto, helper
 from protofx.emitters import emit_graph
 from protofx.importers import import_model
 from protofx.ir import DType, Graph, TensorType
+from protofx.ir.derived_shape import get_authoritative_shape
 
 
 def _make_relu_model() -> bytes:
@@ -130,3 +131,36 @@ class TestChildGraphEmissionSmoke:
         (result,) = gm(torch.tensor([[-1.0, 0.0, 1.0], [2.0, -3.0, 4.0]]))
         expected = torch.tensor([[0.0, 0.0, 1.0], [2.0, 0.0, 4.0]])
         assert torch.equal(result, expected)
+
+
+def test_e2e_derived_shape_beats_seed_metadata() -> None:
+    """Importer propagation must make derived shape authoritative for emission."""
+    cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+    x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2])
+    y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [99])
+
+    then_graph = helper.make_graph(
+        [helper.make_node("Identity", ["x"], ["then_out"])],
+        "then_branch",
+        [],
+        [helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [2])],
+    )
+    else_graph = helper.make_graph(
+        [helper.make_node("Neg", ["x"], ["else_out"])],
+        "else_branch",
+        [],
+        [helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [2])],
+    )
+    if_node = helper.make_node("If", ["cond"], ["y"], then_branch=then_graph, else_branch=else_graph)
+    model = helper.make_model(
+        helper.make_graph([if_node], "if_derived_truth", [cond, x], [y]),
+        opset_imports=[helper.make_opsetid("", 17)],
+    )
+
+    graph = import_model(model)
+    gm = emit_graph(graph)
+    (result,) = gm(torch.tensor(True), torch.tensor([1.0, -2.0]))
+
+    assert graph.outputs[0].tensor_type.shape == (99,)
+    assert get_authoritative_shape(graph.outputs[0]) == (2,)
+    assert result.shape == (2,)
