@@ -10,6 +10,7 @@ import torch
 
 from protofx.emitters import emit_graph
 from protofx.ir import DType, Graph, TensorType
+from protofx.ir.derived_shape import set_derived_shape
 
 # ---------------------------------------------------------------------------
 # Graph builders
@@ -201,6 +202,17 @@ class TestReduceOpsForwardCorrectness:
         # torch.mean/sum require explicit dim for keepdim; pass all dims
         expected = torch_fn(x, dim=(0, 1), keepdim=True)
         assert torch.allclose(result, expected)
+
+    def test_reduce_all_dims_uses_authoritative_input_rank(self) -> None:
+        """Reduction without axes must use authoritative input-rank metadata."""
+        g = _make_reduce_graph_no_axes("ReduceSum", (2, 3), (1, 1), keepdims=1)
+        node = g.nodes[0]
+        node.inputs[0].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(2, 3, 4))
+        set_derived_shape(node.inputs[0], (2, 3))
+        gm = emit_graph(g)
+        x = torch.randn(2, 3)
+        (result,) = gm(x)
+        assert result.shape == (1, 1)
 
 
 class TestReduceOpsOpset18:

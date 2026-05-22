@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from protofx.emitters import emit_graph
 from protofx.ir import DType, Graph, TensorType
+from protofx.ir.derived_shape import set_derived_shape
 
 # ---------------------------------------------------------------------------
 # MaxPool helpers
@@ -168,6 +169,17 @@ class TestMaxPoolHandler:
         g = _make_maxpool_graph(x_shape=(1, 1, 6, 6), y_shape=(1, 1, 4, 4), kernel_shape=[3, 3], num_outputs=2)
         with pytest.raises(NotImplementedError, match="Indices"):
             emit_graph(g)
+
+    def test_maxpool_uses_authoritative_input_shape_rank(self) -> None:
+        """Pooling rank preconditions must use authoritative derived metadata."""
+        g = _make_maxpool_graph(x_shape=(1, 1, 6, 6), y_shape=(1, 1, 4, 4), kernel_shape=[3, 3])
+        node = g.nodes[0]
+        node.inputs[0].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(1, 1, 6))
+        set_derived_shape(node.inputs[0], (1, 1, 6, 6))
+        gm = emit_graph(g)
+        x = torch.randn(1, 1, 6, 6)
+        (result,) = gm(x)
+        assert result.shape == (1, 1, 4, 4)
 
 
 # ---------------------------------------------------------------------------

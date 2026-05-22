@@ -7,6 +7,7 @@ import torch
 
 from protofx.emitters import emit_graph
 from protofx.ir import DType, Graph, TensorType
+from protofx.ir.derived_shape import set_derived_shape
 
 # ---------------------------------------------------------------------------
 # Flatten
@@ -88,6 +89,16 @@ class TestFlattenHandler:
         (result,) = gm(x)
         expected = x.reshape(6, 4)
         assert torch.equal(result, expected)
+
+    def test_flatten_prefers_authoritative_derived_shape(self) -> None:
+        """Flatten must use authoritative derived output shape metadata."""
+        g = _make_flatten_graph((2, 3, 4), axis=1)
+        node = g.nodes[0]
+        node.outputs[0].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(999, 999))
+        set_derived_shape(node.outputs[0], (2, 12))
+        gm = emit_graph(g)
+        (result,) = gm(torch.arange(24, dtype=torch.float32).reshape(2, 3, 4))
+        assert result.shape == (2, 12)
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from protofx.emitters import emit_graph
 from protofx.ir import DType, Graph, TensorType
+from protofx.ir.derived_shape import set_derived_shape
 
 # ---------------------------------------------------------------------------
 # Conv helpers
@@ -194,6 +195,18 @@ class TestConvHandler:
         gm = emit_graph(g)
         output_node = next(n for n in gm.graph.nodes if n.op == "output")
         assert len(output_node.args[0]) == 1
+
+    def test_conv_uses_authoritative_weight_shape_for_dispatch(self) -> None:
+        """Conv rank dispatch must use authoritative derived weight shape metadata."""
+        g = _make_conv_graph(x_shape=(1, 1, 5, 5), w_shape=(1, 1, 3, 3), y_shape=(1, 1, 3, 3))
+        node = g.nodes[0]
+        node.inputs[1].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(1, 1, 3))
+        set_derived_shape(node.inputs[1], (1, 1, 3, 3))
+        gm = emit_graph(g)
+        x = torch.randn(1, 1, 5, 5)
+        w = torch.randn(1, 1, 3, 3)
+        (result,) = gm(x, w)
+        assert result.shape == (1, 1, 3, 3)
 
 
 # ---------------------------------------------------------------------------

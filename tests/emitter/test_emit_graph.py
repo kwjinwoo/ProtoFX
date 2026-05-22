@@ -10,6 +10,7 @@ import torch.fx
 
 from protofx.emitters import emit_graph
 from protofx.ir import DType, Graph, TensorType
+from protofx.ir.derived_shape import set_derived_shape
 
 
 class TestEmitGraphImport:
@@ -246,3 +247,23 @@ class TestChildGraphEmitterHelpers:
 
         with pytest.raises(ValueError, match="missing parent linkage"):
             emit_graph(parent)
+
+
+class TestAuthoritativeShapePreconditions:
+    """Verify emit_graph handlers consume authoritative derived shapes."""
+
+    def test_emit_graph_uses_authoritative_shape_for_flatten(self) -> None:
+        graph = Graph(name="flatten_precondition")
+        x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3, 4)), name="x")
+        node = graph.make_node(
+            op_type="Flatten",
+            inputs=[x],
+            output_types=[TensorType(dtype=DType.FLOAT32, shape=(999, 999))],
+            attributes={"axis": 1},
+        )
+        graph.set_graph_outputs([node.outputs[0]])
+        set_derived_shape(node.outputs[0], (2, 12))
+
+        gm = emit_graph(graph)
+        (result,) = gm(torch.arange(24, dtype=torch.float32).reshape(2, 3, 4))
+        assert result.shape == (2, 12)
