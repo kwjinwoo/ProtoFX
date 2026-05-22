@@ -9,6 +9,8 @@ from onnx import TensorProto, helper
 
 from protofx.emitters import emit_graph
 from protofx.importers import import_model
+from protofx.ir.derived_shape import get_authoritative_shape
+from protofx.ir.shape_propagation import propagate_shapes
 
 
 def _make_if_model() -> helper.ModelProto:
@@ -79,3 +81,16 @@ class TestIfHandler:
 
         with pytest.raises(ValueError, match="arity"):
             import_model(model)
+
+    def test_if_propagation_merges_branch_shape(self) -> None:
+        """If output should use propagated branch shape, not stale seed metadata."""
+        model = _make_if_model()
+        graph = import_model(model)
+        if_node = graph.nodes[0]
+        if_node.outputs[0].tensor_type = if_node.outputs[0].tensor_type.__class__(
+            dtype=if_node.outputs[0].tensor_type.dtype, shape=(9, 9)
+        )
+
+        propagate_shapes(graph)
+
+        assert get_authoritative_shape(if_node.outputs[0]) == (2,)
