@@ -17,6 +17,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from protofx.ir.node import Node
+    from protofx.ir.tensor_type import TensorType as _TensorType
 
 from protofx.ir.tensor_type import TensorType
 
@@ -79,6 +80,7 @@ class Value:
     data: np.ndarray | None = None
     _producer: Node | None = field(default=None, init=False, repr=False)
     _users: list[tuple[Node, int]] = field(default_factory=list, init=False, repr=False)
+    _derived_tensor_type: _TensorType | None = field(default=None, init=False, repr=False)
 
     @property
     def producer(self) -> Node | None:

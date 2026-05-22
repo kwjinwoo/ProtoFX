@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from protofx.ir.derived_shape import get_authoritative_dtype, get_authoritative_shape
 from protofx.ir.dtype import DType
 from protofx.ir.node import AttributeValue, Node, SubgraphValue
+from protofx.ir.shape import ShapeCompatibility, compare_shapes
 from protofx.ir.tensor_type import TensorType
 from protofx.ir.value import Value, ValueKind
 
@@ -517,27 +519,16 @@ class Graph:
         lhs: tuple[int | str | None, ...] | None,
         rhs: tuple[int | str | None, ...] | None,
     ) -> bool:
-        """Return whether two shapes have a provable mismatch.
+        """Return whether two shapes are provably incompatible.
 
         Args:
             lhs: First shape metadata.
             rhs: Second shape metadata.
 
         Returns:
-            ``True`` when available metadata is sufficient to prove a mismatch.
+            ``True`` when available metadata is sufficient to prove incompatibility.
         """
-        if lhs is None or rhs is None:
-            return False
-        if len(lhs) != len(rhs):
-            return True
-        for left_dim, right_dim in zip(lhs, rhs, strict=True):
-            if left_dim is None or right_dim is None:
-                continue
-            if isinstance(left_dim, str) or isinstance(right_dim, str):
-                continue
-            if left_dim != right_dim:
-                return True
-        return False
+        return compare_shapes(lhs, rhs) == ShapeCompatibility.INCOMPATIBLE
 
     def _validate_if_nodes(self) -> None:
         """Validate ``If`` branch contracts on this graph only."""
@@ -563,9 +554,9 @@ class Graph:
             for slot, (then_out, else_out, node_out) in enumerate(
                 zip(then_outputs, else_outputs, node.outputs, strict=True)
             ):
-                then_dtype = then_out.tensor_type.dtype
-                else_dtype = else_out.tensor_type.dtype
-                node_dtype = node_out.tensor_type.dtype
+                then_dtype = get_authoritative_dtype(then_out)
+                else_dtype = get_authoritative_dtype(else_out)
+                node_dtype = get_authoritative_dtype(node_out)
                 if then_dtype is not None and else_dtype is not None and then_dtype != else_dtype:
                     msg = f"node {node.id!r} (If) output {slot}: dtype mismatch across branches"
                     raise ValueError(msg)
@@ -576,9 +567,9 @@ class Graph:
                     msg = f"node {node.id!r} (If) output {slot}: dtype mismatch with else_branch"
                     raise ValueError(msg)
 
-                then_shape = then_out.tensor_type.shape
-                else_shape = else_out.tensor_type.shape
-                node_shape = node_out.tensor_type.shape
+                then_shape = get_authoritative_shape(then_out)
+                else_shape = get_authoritative_shape(else_out)
+                node_shape = get_authoritative_shape(node_out)
                 if self._shapes_provably_mismatch(then_shape, else_shape):
                     msg = f"node {node.id!r} (If) output {slot}: shape mismatch across branches"
                     raise ValueError(msg)
@@ -628,34 +619,38 @@ class Graph:
                 raise ValueError(msg)
 
             iteration_input = body.inputs[0]
-            if iteration_input.tensor_type.dtype is not None and iteration_input.tensor_type.dtype != DType.INT64:
+            iteration_dtype = get_authoritative_dtype(iteration_input)
+            if iteration_dtype is not None and iteration_dtype != DType.INT64:
                 msg = f"node {node.id!r} (Loop): body input 0 must be iteration counter (INT64 scalar)"
                 raise ValueError(msg)
-            if self._shapes_provably_mismatch(iteration_input.tensor_type.shape, ()):
+            if self._shapes_provably_mismatch(get_authoritative_shape(iteration_input), ()):
                 msg = f"node {node.id!r} (Loop): body input 0 must be iteration counter (INT64 scalar)"
                 raise ValueError(msg)
 
             body_cond_input = body.inputs[1]
+            cond_input_dtype = get_authoritative_dtype(cond_input)
+            body_cond_input_dtype = get_authoritative_dtype(body_cond_input)
             if (
-                cond_input.tensor_type.dtype is not None
-                and body_cond_input.tensor_type.dtype is not None
-                and cond_input.tensor_type.dtype != body_cond_input.tensor_type.dtype
+                cond_input_dtype is not None
+                and body_cond_input_dtype is not None
+                and cond_input_dtype != body_cond_input_dtype
             ):
                 msg = f"node {node.id!r} (Loop): body input 1 must be incoming condition"
                 raise ValueError(msg)
-            if self._shapes_provably_mismatch(cond_input.tensor_type.shape, body_cond_input.tensor_type.shape):
+            if self._shapes_provably_mismatch(
+                get_authoritative_shape(cond_input), get_authoritative_shape(body_cond_input)
+            ):
                 msg = f"node {node.id!r} (Loop): body input 1 must be incoming condition"
                 raise ValueError(msg)
 
             cond_output = body.outputs[0]
-            if (
-                cond_input.tensor_type.dtype is not None
-                and cond_output.tensor_type.dtype is not None
-                and cond_input.tensor_type.dtype != cond_output.tensor_type.dtype
-            ):
+            cond_output_dtype = get_authoritative_dtype(cond_output)
+            if cond_input_dtype is not None and cond_output_dtype is not None and cond_input_dtype != cond_output_dtype:
                 msg = f"node {node.id!r} (Loop): condition dtype mismatch between input and body output"
                 raise ValueError(msg)
-            if self._shapes_provably_mismatch(cond_input.tensor_type.shape, cond_output.tensor_type.shape):
+            if self._shapes_provably_mismatch(
+                get_authoritative_shape(cond_input), get_authoritative_shape(cond_output)
+            ):
                 msg = f"node {node.id!r} (Loop): condition shape mismatch between input and body output"
                 raise ValueError(msg)
 
@@ -665,10 +660,10 @@ class Graph:
                 body_out = body.outputs[slot + 1]
                 parent_out = node.outputs[slot]
 
-                init_dtype = parent_init.tensor_type.dtype
-                body_in_dtype = body_in.tensor_type.dtype
-                body_out_dtype = body_out.tensor_type.dtype
-                parent_out_dtype = parent_out.tensor_type.dtype
+                init_dtype = get_authoritative_dtype(parent_init)
+                body_in_dtype = get_authoritative_dtype(body_in)
+                body_out_dtype = get_authoritative_dtype(body_out)
+                parent_out_dtype = get_authoritative_dtype(parent_out)
                 known_dtypes = [
                     dtype
                     for dtype in (init_dtype, body_in_dtype, body_out_dtype, parent_out_dtype)
@@ -678,10 +673,10 @@ class Graph:
                     msg = f"node {node.id!r} (Loop) carried output {slot}: dtype mismatch"
                     raise ValueError(msg)
 
-                init_shape = parent_init.tensor_type.shape
-                body_in_shape = body_in.tensor_type.shape
-                body_out_shape = body_out.tensor_type.shape
-                parent_out_shape = parent_out.tensor_type.shape
+                init_shape = get_authoritative_shape(parent_init)
+                body_in_shape = get_authoritative_shape(body_in)
+                body_out_shape = get_authoritative_shape(body_out)
+                parent_out_shape = get_authoritative_shape(parent_out)
                 if self._shapes_provably_mismatch(init_shape, body_in_shape):
                     msg = f"node {node.id!r} (Loop) carried output {slot}: shape mismatch with body input"
                     raise ValueError(msg)
@@ -768,44 +763,53 @@ class Graph:
             known_dtypes = [
                 dtype
                 for dtype in (
-                    parent_state_in.tensor_type.dtype,
-                    body_state_in.tensor_type.dtype,
-                    body_state_out.tensor_type.dtype,
-                    parent_state_out.tensor_type.dtype,
+                    get_authoritative_dtype(parent_state_in),
+                    get_authoritative_dtype(body_state_in),
+                    get_authoritative_dtype(body_state_out),
+                    get_authoritative_dtype(parent_state_out),
                 )
                 if dtype is not None
             ]
             if known_dtypes and any(dtype != known_dtypes[0] for dtype in known_dtypes[1:]):
                 return False
 
-            if self._shapes_provably_mismatch(parent_state_in.tensor_type.shape, body_state_in.tensor_type.shape):
+            if self._shapes_provably_mismatch(
+                get_authoritative_shape(parent_state_in), get_authoritative_shape(body_state_in)
+            ):
                 return False
-            if self._shapes_provably_mismatch(parent_state_in.tensor_type.shape, body_state_out.tensor_type.shape):
+            if self._shapes_provably_mismatch(
+                get_authoritative_shape(parent_state_in), get_authoritative_shape(body_state_out)
+            ):
                 return False
-            if self._shapes_provably_mismatch(parent_state_in.tensor_type.shape, parent_state_out.tensor_type.shape):
+            if self._shapes_provably_mismatch(
+                get_authoritative_shape(parent_state_in), get_authoritative_shape(parent_state_out)
+            ):
                 return False
 
         for scan_slot in range(num_scan_inputs):
             parent_scan_in = node.inputs[state_count + scan_slot]
             body_scan_in = body.inputs[state_count + scan_slot]
-            if not self._scan_sequence_matches_slice(parent_scan_in.tensor_type, body_scan_in.tensor_type):
+            if not self._scan_sequence_matches_slice(parent_scan_in, body_scan_in):
                 return False
 
         for scan_slot in range(scan_output_count):
             body_scan_out = body.outputs[state_count + scan_slot]
             parent_scan_out = node.outputs[state_count + scan_slot]
-            if not self._scan_sequence_matches_slice(parent_scan_out.tensor_type, body_scan_out.tensor_type):
+            if not self._scan_sequence_matches_slice(parent_scan_out, body_scan_out):
                 return False
 
         return True
 
-    def _scan_sequence_matches_slice(self, sequence_type: TensorType, slice_type: TensorType) -> bool:
+    def _scan_sequence_matches_slice(self, sequence_value: Value, slice_value: Value) -> bool:
         """Return whether Scan sequence metadata matches one per-step slice metadata."""
-        if sequence_type.dtype is not None and slice_type.dtype is not None and sequence_type.dtype != slice_type.dtype:
+        sequence_type = get_authoritative_dtype(sequence_value)
+        slice_type = get_authoritative_dtype(slice_value)
+        if sequence_type is not None and slice_type is not None and sequence_type != slice_type:
             return False
-        sequence_shape = sequence_type.shape
+        sequence_shape = get_authoritative_shape(sequence_value)
+        slice_shape = get_authoritative_shape(slice_value)
         if sequence_shape is None:
             return True
         if len(sequence_shape) == 0:
             return False
-        return not self._shapes_provably_mismatch(sequence_shape[1:], slice_type.shape)
+        return not self._shapes_provably_mismatch(sequence_shape[1:], slice_shape)
