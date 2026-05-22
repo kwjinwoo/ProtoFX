@@ -194,7 +194,7 @@ def _propagate_graph(graph: Graph) -> None:
                 _propagate_graph(then_branch)
                 _propagate_graph(else_branch)
                 for then_out, else_out, node_out in zip(
-                    then_branch.outputs, else_branch.outputs, node.outputs, strict=True
+                    then_branch.outputs, else_branch.outputs, node.outputs, strict=False
                 ):
                     merged_shape = _merge_if_shapes(
                         get_authoritative_tensor_type(then_out).shape,
