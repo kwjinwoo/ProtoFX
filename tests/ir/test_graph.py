@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from protofx.ir import DType, TensorType
+from protofx.ir.derived_shape import set_derived_tensor_type
 from protofx.ir.graph import Graph
 from protofx.ir.value import ValueKind
 
@@ -1121,6 +1122,22 @@ class TestGraphControlFlowValidation:
         else_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(2, 3))
         with pytest.raises(ValueError, match="shape mismatch"):
             g.validate()
+
+    def test_validate_uses_authoritative_derived_shape_layer(self) -> None:
+        g, if_node = self._make_if_graph()
+        then_output = if_node.subgraphs["then_branch"].outputs[0]
+        else_output = if_node.subgraphs["else_branch"].outputs[0]
+        node_output = if_node.outputs[0]
+
+        then_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(999, 999))
+        else_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(888, 888))
+        node_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(777, 777))
+
+        set_derived_tensor_type(then_output, TensorType(dtype=DType.FLOAT32, shape=(2, 3)))
+        set_derived_tensor_type(else_output, TensorType(dtype=DType.FLOAT32, shape=(2, 3)))
+        set_derived_tensor_type(node_output, TensorType(dtype=DType.FLOAT32, shape=(2, 3)))
+
+        g.validate()
 
     def test_topological_sort_is_graph_local_with_children(self) -> None:
         g, if_node = self._make_if_graph()

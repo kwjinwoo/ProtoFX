@@ -1,7 +1,7 @@
 """Tests for protofx.ir.Shape type alias and helpers."""
 
 from protofx.ir import Shape
-from protofx.ir.shape import is_fully_known, rank
+from protofx.ir.shape import ShapeCompatibility, compare_shapes, is_fully_known, rank
 
 
 class TestShapeFiveCases:
@@ -71,3 +71,16 @@ class TestIsFullyKnown:
 
     def test_symbolic_is_not_fully_known(self) -> None:
         assert is_fully_known(("batch", 3)) is False
+
+
+class TestCompareShapes:
+    """Verify tri-state shape comparison semantics."""
+
+    def test_compare_fully_equal_shapes(self) -> None:
+        assert compare_shapes((2, 3), (2, 3)) == ShapeCompatibility.COMPATIBLE
+
+    def test_compare_provable_rank_mismatch(self) -> None:
+        assert compare_shapes((2, 3), (2,)) == ShapeCompatibility.INCOMPATIBLE
+
+    def test_compare_unknown_keeps_unknown_state(self) -> None:
+        assert compare_shapes((None, 3), (2, 3)) == ShapeCompatibility.UNKNOWN

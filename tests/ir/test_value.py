@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from protofx.ir import DType, TensorType
+from protofx.ir.derived_shape import get_authoritative_tensor_type, set_derived_tensor_type
 from protofx.ir.node import Node
 from protofx.ir.value import Value, ValueKind
 
@@ -277,3 +278,19 @@ class TestValueDataPayload:
         """Sentinel values always have data=None."""
         v = Value(id="s0", kind=ValueKind.SENTINEL, tensor_type=TensorType(dtype=None, shape=None))
         assert v.data is None
+
+
+class TestValueAuthoritativeTensorType:
+    """Verify internal authoritative tensor metadata layer behavior."""
+
+    def test_authoritative_defaults_to_seed_tensor_type(self) -> None:
+        seed = TensorType(dtype=DType.FLOAT32, shape=(1, 2))
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=seed)
+        assert get_authoritative_tensor_type(v) == seed
+
+    def test_authoritative_can_override_seed_tensor_type(self) -> None:
+        seed = TensorType(dtype=DType.FLOAT32, shape=(999, 999))
+        derived = TensorType(dtype=DType.FLOAT32, shape=(2, 3))
+        v = Value(id="v0", kind=ValueKind.GRAPH_INPUT, tensor_type=seed)
+        set_derived_tensor_type(v, derived)
+        assert get_authoritative_tensor_type(v) == derived
