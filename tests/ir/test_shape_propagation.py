@@ -111,3 +111,58 @@ def test_propagate_conv_overrides_seed_metadata() -> None:
     propagate_shapes(graph)
 
     assert get_authoritative_shape(node.outputs[0]) == (1, 4, 4, 4)
+
+
+def test_propagate_squeeze_explicit_axis_with_symbolic_dim_stays_unknown() -> None:
+    """Squeeze must not drop explicit symbolic axis without proof of ``== 1``."""
+    graph = Graph(name="squeeze_symbolic_unknown_graph")
+    x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=("n", 3, 1)), name="x")
+    node = graph.make_node(
+        op_type="Squeeze",
+        inputs=[x],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(3, 1))],
+        attributes={"axes": [0]},
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) is None
+
+
+def test_propagate_squeeze_explicit_axis_with_unknown_dim_stays_unknown() -> None:
+    """Squeeze must not drop explicit unknown axis without proof of ``== 1``."""
+    graph = Graph(name="squeeze_none_unknown_graph")
+    x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(None, 3, 1)), name="x")
+    node = graph.make_node(
+        op_type="Squeeze",
+        inputs=[x],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(3, 1))],
+        attributes={"axes": [0]},
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) is None
+
+
+def test_propagate_reshape_minus_one_without_divisibility_stays_unknown() -> None:
+    """Reshape ``-1`` axis must remain unknown when divisibility is unproven."""
+    graph = Graph(name="reshape_minus_one_non_divisible_graph")
+    x = graph.add_input(tensor_type=TensorType(dtype=DType.FLOAT32, shape=(2, 3)), name="x")
+    shape = graph.add_initializer(
+        tensor_type=TensorType(dtype=DType.INT64, shape=(2,)),
+        data=np.array([-1, 4], dtype=np.int64),
+        name="shape",
+    )
+    node = graph.make_node(
+        op_type="Reshape",
+        inputs=[x, shape],
+        output_types=[TensorType(dtype=DType.FLOAT32, shape=(99, 4))],
+    )
+    graph.set_graph_outputs([node.outputs[0]])
+
+    propagate_shapes(graph)
+
+    assert get_authoritative_shape(node.outputs[0]) == (None, 4)

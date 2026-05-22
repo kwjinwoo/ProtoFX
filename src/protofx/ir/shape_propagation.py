@@ -394,6 +394,9 @@ def _derive_reshape_shape(node: Node) -> Shape:
     if known_product is None or known_target is None or known_target == 0 or has_unknown:
         resolved[neg_one_index] = None
         return tuple(resolved[:output_rank])
+    if known_product % known_target != 0:
+        resolved[neg_one_index] = None
+        return tuple(resolved[:output_rank])
 
     resolved[neg_one_index] = known_product // known_target
     return tuple(resolved[:output_rank])
@@ -436,8 +439,6 @@ def _derive_squeeze_shape(node: Node) -> Shape:
             result.append(dim)
             continue
         if dim == 1:
-            continue
-        if dim is None or isinstance(dim, str):
             continue
         return None
     return tuple(result)
