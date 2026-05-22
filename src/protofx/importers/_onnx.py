@@ -17,6 +17,7 @@ from protofx.ir.dtype import DType
 from protofx.ir.graph import Graph
 from protofx.ir.node import AttributeValue
 from protofx.ir.shape import Shape
+from protofx.ir.shape_propagation import propagate_shapes
 from protofx.ir.tensor_type import TensorType
 from protofx.ir.value import Value, ValueKind
 from protofx.utils.dtype import onnx_dtype_to_ir
@@ -1087,7 +1088,10 @@ def import_model(model_proto: onnx.ModelProto) -> Graph:
         parent_value_registry=None,
     )
 
-    # Phase 6: validate IR invariants (fail-fast contract)
+    # Phase 6: propagate authoritative symbolic shapes (seed metadata only)
+    propagate_shapes(graph)
+
+    # Phase 7: validate IR invariants (fail-fast contract)
     graph.validate()
 
     return graph
