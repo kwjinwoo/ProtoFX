@@ -7,6 +7,7 @@ import onnx
 import pytest
 from onnx import TensorProto, helper
 
+from protofx.emitters import emit_graph
 from protofx.importers import import_model
 from protofx.importers._onnx import _normalize_attribute
 from protofx.ir import DType, ValueKind
@@ -1692,3 +1693,71 @@ class TestImporterShapePipeline:
         graph = import_model(self._make_flatten_with_stale_output_shape())
         assert graph.outputs[0].tensor_type.shape == (99, 99)
         assert get_authoritative_shape(graph.outputs[0]) == (2, 12)
+
+
+class TestDeferredShapeBoundaries:
+    """Verify deferred shape propagation and lowering boundaries stay explicit."""
+
+    def test_import_model_rejects_loop_when_seed_shape_needs_propagation_fixup(self) -> None:
+        M = helper.make_tensor_value_info("M", TensorProto.INT64, [])
+        cond = helper.make_tensor_value_info("cond", TensorProto.BOOL, [])
+        state_init = helper.make_tensor_value_info("state_init", TensorProto.FLOAT, [2])
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [9])
+
+        body = helper.make_graph(
+            [
+                helper.make_node("Identity", ["cond_in"], ["cond_out"]),
+                helper.make_node("Identity", ["state_in"], ["state_out"]),
+            ],
+            "body",
+            [
+                helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+                helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_in", TensorProto.FLOAT, [2]),
+            ],
+            [
+                helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+                helper.make_tensor_value_info("state_out", TensorProto.FLOAT, [2]),
+            ],
+        )
+        loop = helper.make_node("Loop", ["M", "cond", "state_init"], ["y"], body=body)
+        model = _make_model([M, cond, state_init], outputs=[y], nodes=[loop])
+
+        with pytest.raises(ValueError, match="Loop"):
+            import_model(model)
+
+    def test_import_model_rejects_scan_when_seed_shape_needs_propagation_fixup(self) -> None:
+        s0 = helper.make_tensor_value_info("s0", TensorProto.FLOAT, [4])
+        scan0 = helper.make_tensor_value_info("scan0", TensorProto.FLOAT, [3, 2])
+        y0 = helper.make_tensor_value_info("y0", TensorProto.FLOAT, [4])
+        z0 = helper.make_tensor_value_info("z0", TensorProto.FLOAT, [3, 9])
+
+        body = helper.make_graph(
+            [
+                helper.make_node("Add", ["state0_in", "scan0_step"], ["state0_out"]),
+                helper.make_node("Identity", ["scan0_step"], ["scan0_out"]),
+            ],
+            "body",
+            [
+                helper.make_tensor_value_info("state0_in", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("scan0_step", TensorProto.FLOAT, [2]),
+            ],
+            [
+                helper.make_tensor_value_info("state0_out", TensorProto.FLOAT, [4]),
+                helper.make_tensor_value_info("scan0_out", TensorProto.FLOAT, [2]),
+            ],
+        )
+        scan = helper.make_node("Scan", ["s0", "scan0"], ["y0", "z0"], body=body, num_scan_inputs=1)
+        model = _make_model([s0, scan0], outputs=[y0, z0], nodes=[scan])
+
+        with pytest.raises(ValueError, match="Scan"):
+            import_model(model)
+
+    def test_shape_as_data_runtime_dynamic_lowering_is_explicitly_unimplemented(self) -> None:
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
+        y = helper.make_tensor_value_info("y", TensorProto.INT64, [2])
+        shape_node = helper.make_node("Shape", ["x"], ["y"])
+        model = _make_model([x], outputs=[y], nodes=[shape_node])
+
+        with pytest.raises(NotImplementedError, match="Shape"):
+            emit_graph(import_model(model))

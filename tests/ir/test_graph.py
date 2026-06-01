@@ -1123,6 +1123,16 @@ class TestGraphControlFlowValidation:
         with pytest.raises(ValueError, match="shape mismatch"):
             g.validate()
 
+    def test_validate_skips_shape_mismatch_when_branch_shape_is_unknown(self) -> None:
+        g, if_node = self._make_if_graph()
+        then_output = if_node.subgraphs["then_branch"].outputs[0]
+        else_output = if_node.subgraphs["else_branch"].outputs[0]
+        node_output = if_node.outputs[0]
+        then_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=None)
+        else_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=(2,))
+        node_output.tensor_type = TensorType(dtype=DType.FLOAT32, shape=None)
+        g.validate()
+
     def test_validate_uses_authoritative_derived_shape_layer(self) -> None:
         g, if_node = self._make_if_graph()
         then_output = if_node.subgraphs["then_branch"].outputs[0]
@@ -1213,6 +1223,22 @@ class TestGraphLoopValidation:
         loop_body = loop_node.subgraphs["body"]
         carried_value = loop_body.outputs[1]
         carried_value.tensor_type = TensorType(dtype=DType.INT64, shape=(2,))
+        with pytest.raises(ValueError, match="Loop"):
+            graph.validate()
+
+    def test_validate_skips_loop_carried_shape_mismatch_when_shape_unknown(self) -> None:
+        graph, loop_node = self._make_loop_graph()
+        loop_body = loop_node.subgraphs["body"]
+        loop_body.inputs[2].tensor_type = TensorType(dtype=DType.FLOAT32, shape=None)
+        loop_body.outputs[1].tensor_type = TensorType(dtype=DType.FLOAT32, shape=None)
+        loop_node.outputs[0].tensor_type = TensorType(dtype=DType.FLOAT32, shape=None)
+        graph.validate()
+
+    def test_validate_fails_for_loop_carried_shape_mismatch_when_provable(self) -> None:
+        graph, loop_node = self._make_loop_graph()
+        loop_body = loop_node.subgraphs["body"]
+        loop_body.outputs[1].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(2, 1))
+        loop_node.outputs[0].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(2,))
         with pytest.raises(ValueError, match="Loop"):
             graph.validate()
 
@@ -1331,5 +1357,16 @@ class TestGraphScanValidation:
     def test_validate_fails_for_scan_output_shape_mismatch(self) -> None:
         graph, scan_node = self._make_scan_graph()
         scan_node.outputs[2].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(3, 3))
+        with pytest.raises(ValueError, match="Scan"):
+            graph.validate()
+
+    def test_validate_skips_scan_output_shape_mismatch_when_dim_unknown(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        scan_node.outputs[2].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(3, None))
+        graph.validate()
+
+    def test_validate_fails_for_scan_output_shape_rank_mismatch_when_provable(self) -> None:
+        graph, scan_node = self._make_scan_graph()
+        scan_node.outputs[2].tensor_type = TensorType(dtype=DType.FLOAT32, shape=(3, 2, 1))
         with pytest.raises(ValueError, match="Scan"):
             graph.validate()

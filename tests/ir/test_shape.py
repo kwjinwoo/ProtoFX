@@ -84,3 +84,15 @@ class TestCompareShapes:
 
     def test_compare_unknown_keeps_unknown_state(self) -> None:
         assert compare_shapes((None, 3), (2, 3)) == ShapeCompatibility.UNKNOWN
+
+    def test_compare_both_unknown_shapes_is_unknown(self) -> None:
+        assert compare_shapes(None, None) == ShapeCompatibility.UNKNOWN
+
+    def test_compare_unknown_and_known_shapes_is_unknown(self) -> None:
+        assert compare_shapes(None, (2, 3)) == ShapeCompatibility.UNKNOWN
+
+    def test_compare_symbolic_shapes_stays_unknown(self) -> None:
+        assert compare_shapes(("N", 3), ("N", 3)) == ShapeCompatibility.UNKNOWN
+
+    def test_compare_symbolic_dim_with_known_mismatch_is_incompatible(self) -> None:
+        assert compare_shapes(("N", 3), ("N", 4)) == ShapeCompatibility.INCOMPATIBLE
