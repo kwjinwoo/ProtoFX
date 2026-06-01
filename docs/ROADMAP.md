@@ -159,9 +159,9 @@ dynamic lowering for shape-as-data ops.
 | Status | Item |
 |--------|------|
 | ✅ | IR-level symbolic shape propagation is the authoritative derived metadata layer for validation and emission preconditions |
-| 📋 | ONNX shape inference is used as seed input only, with tri-state shape comparison semantics (compatible / provably incompatible / unknown) applied consistently |
-| 📋 | First-phase symbolic propagation coverage is established across elementwise/pass-through, simple shape transforms, broadcast/reduction/linalg, spatial ops, and `If` |
-| 📋 | Deferred boundaries are maintained for `Loop`/`Scan` propagation extensions and runtime dynamic lowering for shape-as-data operators |
+| ✅ | ONNX shape inference is used as seed input only, with tri-state shape comparison semantics (compatible / provably incompatible / unknown) applied consistently |
+| ✅ | First-phase symbolic propagation coverage is established across elementwise/pass-through, simple shape transforms, broadcast/reduction/linalg, spatial ops, and `If` |
+| ✅ | Deferred boundaries are maintained for `Loop`/`Scan` propagation extensions and runtime dynamic lowering for shape-as-data operators |
 
 ---
 
